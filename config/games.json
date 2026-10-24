@@ -1,0 +1,5 @@
+[
+  {"code": "baloot", "name": "Baloot", "image": "baloot.png", "enabled": true},
+  {"code": "okey", "name": "Okey", "image": "okey.png", "enabled": false},
+  {"code": "xinjiang", "name": "新疆", "image": "xinjiang.png", "enabled": false}
+]

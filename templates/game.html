@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}{{ game.name }} · AI 反馈统计{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/game.css') }}">{% endblock %}
+{% block content %}
+<a class="back-link" href="{{ url_for('pages.home') }}">← 返回游戏</a>
+<header class="workspace-heading">
+    <span class="game-avatar" aria-hidden="true">
+        {% if game.code == 'baloot' %}<img src="{{ url_for('static', filename='images/baloot-spade.svg') }}" alt="">{% else %}<img src="{{ url_for('static', filename='images/' + game.image) }}" alt="">{% endif %}
+    </span>
+    <div><h1 class="title">{{ game.name }}</h1><p class="muted heading-note">玩家反馈报告</p></div>
+</header>
+<hr>
+{% if not game.enabled %}
+<section class="panel empty-state"><h2>此游戏即将开放</h2><p class="muted">分类和游戏术语配置完成后，即可在这里生成反馈报告。</p><a class="button secondary" href="{{ url_for('pages.home') }}">返回首页</a></section>
+{% else %}
+<main id="workspace" data-game="{{ game.code }}">
+    <div id="error" class="notice error" role="alert" hidden></div>
+    <section class="panel controls-panel" aria-label="文件与报告日期">
+        <form id="upload-form">
+            <div class="file-row">
+                <span class="file-icon" aria-hidden="true"><img src="{{ url_for('static', filename='images/file-icon.svg') }}" alt=""></span>
+                <label class="file-picker" id="upload-zone">
+                    <span id="file-label">选择或拖入 CSV / Excel 文件</span>
+                    <span id="change-file" class="change-file" hidden>更换文件</span>
+                    <input id="file" type="file" name="file" accept=".csv,.xlsx" required aria-label="选择反馈文件">
+                </label>
+                <button id="upload-button" type="submit" class="secondary compact">上传并预览</button>
+                <span id="file-summary" class="muted small file-summary">请包含本期及上周同期的完整反馈</span>
+            </div>
+            <p id="upload-note" class="muted small">支持 CSV、.xlsx；Excel 仅读取第一个工作表。上传不会调用 AI。</p>
+        </form>
+        <form id="report-form" hidden>
+            <div class="date-fields">
+                <label>开始日期<input type="date" id="start" name="start" required></label>
+                <span class="date-arrow" aria-hidden="true">→</span>
+                <label>结束日期<input type="date" id="end" name="end" required></label>
+                <button id="generate-button" type="submit" disabled>生成报告 ↗</button>
+            </div>
+            <div id="selection-summary" hidden>
+                <p class="comparison"><span>上周同期：<strong id="previous-period"></strong></span><span id="period-counts"></span></p>
+                <p id="selection-note" class="muted small"></p>
+                <div id="coverage-warning" class="notice warning" hidden></div>
+                <label id="confirm-label" class="check small" hidden><input type="checkbox" id="confirm-coverage">我已确认完整导出两个期间；超出文件记录边界的日期确实没有反馈。</label>
+            </div>
+            <p class="muted cost-note">日期含首尾当天 · 生成会调用 AI，可能产生 API 费用</p>
+        </form>
+        <div id="job-status" hidden>
+            <div class="status-line"><span id="job-message" class="muted small" role="status" aria-live="polite"></span><button id="stop-button" type="button" class="secondary compact" hidden>停止处理</button></div>
+            <progress id="job-progress" aria-label="报告处理进度" hidden></progress>
+        </div>
+    </section>
+
+    <section id="content-section" class="panel content-panel" hidden>
+        <div class="content-toolbar">
+            <div class="tabs" role="tablist" aria-label="反馈与报告">
+                <button id="data-tab" type="button" class="tab active" role="tab" aria-selected="true" aria-controls="data-section">数据预览</button>
+                <button id="report-tab" type="button" class="tab" role="tab" aria-selected="false" aria-controls="result-section" tabindex="-1">报告</button>
+            </div>
+            <span id="date-span" class="muted toolbar-meta"></span>
+            <div id="downloads" class="downloads" hidden>
+                <a id="download-md" class="button secondary compact" href="#">Markdown ↓</a>
+                <a id="download-excel" class="button secondary compact" href="#">完整翻译 Excel ↓</a>
+            </div>
+        </div>
+        <div id="data-section" role="tabpanel" aria-labelledby="data-tab">
+            <div class="table-scroll" tabindex="0" role="region" aria-label="上传反馈数据，可横向和纵向滚动"><table id="data-table"><thead></thead><tbody></tbody></table></div>
+            <div class="pagination"><span id="page-info" class="muted small"></span><div><button id="prev-page" type="button" class="secondary compact icon-button" aria-label="上一页"><img src="{{ url_for('static', filename='images/arrow-left.svg') }}" alt=""></button><button id="next-page" type="button" class="secondary compact icon-button" aria-label="下一页"><img src="{{ url_for('static', filename='images/arrow-right.svg') }}" alt=""></button></div></div>
+        </div>
+        <div id="result-section" role="tabpanel" aria-labelledby="report-tab" hidden>
+            <div id="report-empty" class="empty-state"><h2 id="result-title">报告尚未生成</h2><p class="muted">选择日期并生成后，报告会显示在这里。</p></div>
+            <article id="report-preview" class="report-preview" hidden></article>
+        </div>
+    </section>
+</main>
+{% endif %}
+{% endblock %}
+{% block scripts %}{% if game.enabled %}<script src="{{ url_for('static', filename='js/game.js') }}" defer></script>{% endif %}{% endblock %}

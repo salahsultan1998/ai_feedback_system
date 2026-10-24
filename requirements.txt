@@ -1,0 +1,6 @@
+Flask>=3.1,<4
+pandas>=2.2,<4
+openpyxl>=3.1,<4
+openai>=1.60,<4
+python-dotenv>=1,<2
+Markdown>=3.7,<4

@@ -1,0 +1,55 @@
+"""Configuration is read from the repository, never changed by web requests."""
+import json
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def read_json(path):
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def list_games(root=ROOT):
+    return read_json(Path(root) / "config/games.json")
+
+
+def get_game(code, root=ROOT):
+    for game in list_games(root):
+        if game["code"] == code:
+            return game
+    raise ValueError("游戏不存在。")
+
+
+def load_settings(root=ROOT):
+    return read_json(Path(root) / "config/settings.json")
+
+
+def load_config(code, root=ROOT):
+    game = get_game(code, root)
+    if not game["enabled"]:
+        raise ValueError("此游戏的分类与提示词尚未配置完成。")
+    folder = Path(root) / "config" / code
+    config = {**load_settings(root), **read_json(folder / "settings.json")}
+    config.update(game=code, name=game["name"], schema=read_json(folder / "labels.json"),
+                  report=read_json(folder / "report_rules.json"))
+    for key in ("concurrency", "timeout_seconds", "max_rows", "max_report_days"):
+        if not isinstance(config[key], int) or config[key] < 1:
+            raise ValueError(f"配置 {key} 必须为正整数。")
+    if config["max_retries"] < 0 or config["retry_delay"] < 0:
+        raise ValueError("重试配置不可为负数。")
+    report = config["report"]
+    if report["ai_max_input_chars"] < 3000 or any(report[k] < 1 for k in
+            ("max_suggestions", "max_issues_per_module", "max_evidence_ids")):
+        raise ValueError("报告长度或数量限制无效。")
+    if any(value < 0 for value in report["anomaly"].values()):
+        raise ValueError("趋势阈值不可为负数。")
+    labels = config["schema"].get("labels")
+    if not labels or any(not isinstance(v.get("themes"), list) for v in labels.values()):
+        raise ValueError("游戏分类配置无效。")
+    for name in ("classification", "suggestions", "issues"):
+        prompt = (folder / "prompts" / f"{name}.md").read_text(encoding="utf-8")
+        if name == "classification" and "{{LABEL_SCHEMA}}" not in prompt:
+            raise ValueError("分类提示词缺少 {{LABEL_SCHEMA}}。")
+        config[name + "_prompt"] = prompt.replace("{{GAME_NAME}}", game["name"]).replace(
+            "{{LABEL_SCHEMA}}", json.dumps(config["schema"], ensure_ascii=False))
+    return config

@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="title">AI 反馈统计</h1>
+<hr>
+<main class="container">
+    {% for game in games %}
+    <a class="card" href="{{ url_for('pages.game', code=game.code) }}" aria-label="{{ game.name }} 反馈报告">
+        <div class="card-icon"><img src="{{ url_for('static', filename='images/' + game.image) }}" alt=""></div>
+        <h2>{{ game.name }}</h2>
+    </a>
+    {% endfor %}
+</main>
+{% endblock %}

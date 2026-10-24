@@ -1,0 +1,12 @@
+{
+  "anomaly": {
+    "min_count": 10,
+    "min_increase": 10,
+    "min_growth_rate": 0.5,
+    "new_module_min_count": 10
+  },
+  "max_suggestions": 5,
+  "max_issues_per_module": 3,
+  "max_evidence_ids": 3,
+  "ai_max_input_chars": 12000
+}

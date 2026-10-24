@@ -1,0 +1,13 @@
+{
+  "max_upload_mb": 32,
+  "max_rows": 100000,
+  "max_expanded_xlsx_mb": 128,
+  "preview_page_size": 50,
+  "max_report_days": 31,
+  "csv_encoding": "utf-8-sig",
+  "concurrency": 3,
+  "max_retries": 3,
+  "retry_delay": 2,
+  "timeout_seconds": 60,
+  "model": "openai/gpt-4o-mini"
+}
