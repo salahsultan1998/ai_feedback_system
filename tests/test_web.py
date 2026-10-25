@@ -53,6 +53,14 @@ class WebTests(BaseTest):
         html=self.client.get(job+"/report").get_json()["html"]
         self.assertIn("<table>",html)
         self.assertIn(job+"/download/excel",html)
+        self.assertEqual(self.client.post(job+"/push/feishu").status_code, 403)
+        with patch("web.api.feishu.push", return_value={"available": True, "status": "sent", "sent_at": "2026-10-26T00:00:00+00:00"}) as sender:
+            pushed = self.client.post(job+"/push/feishu", json={}, headers=self.headers)
+            self.assertEqual(pushed.status_code, 200)
+            self.assertEqual(pushed.get_json()["status"], "sent")
+            sender.assert_called_once()
+            with self.app.extensions["feishu_lock"]:
+                self.assertEqual(self.client.post(job+"/push/feishu", json={}, headers=self.headers).status_code, 409)
 
     def test_missing_api_key_is_reported_before_job_starts(self):
         base = self.upload()
@@ -69,5 +77,8 @@ class WebTests(BaseTest):
         job="a"*32
         folder=self.root/"web/baloot"/run
         atomic_json(folder/"jobs"/(job+".json"),{"status":"running","message":"busy"})
+        with patch("web.api.feishu.push") as sender:
+            self.assertEqual(self.client.post(base+"/jobs/"+job+"/push/feishu", json={}, headers=self.headers).status_code, 400)
+            sender.assert_not_called()
         create_app({"TESTING":True,"STORAGE_ROOT":self.root/"web"})
         self.assertEqual(json.loads((folder/"jobs"/(job+".json")).read_text())["status"],"interrupted")

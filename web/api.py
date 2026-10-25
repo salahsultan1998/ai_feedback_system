@@ -14,6 +14,7 @@ from feedback.cleaning import clean_feedback, parse_dates
 from feedback.storage import atomic_csv, atomic_json, read_csv
 from feedback.workflow import prepare_selection
 from feedback.jobs import BusyError
+from feedback import feishu
 
 api = Blueprint("api", __name__, url_prefix="/api")
 
@@ -159,7 +160,24 @@ def report_preview(game, run, job):
     # Export's relative link points to the matching downloadable workbook in browser preview.
     excel_url = url_for("api.download", game=game, run=run, job=job, kind="excel")
     html = html.replace('href="feedback_details.xlsx"', f'href="{excel_url}"')
-    return jsonify(html=html)
+    return jsonify(html=html, feishu=feishu.state(folder, config_for(game)))
+
+
+@api.post("/games/<game>/uploads/<run>/jobs/<job>/push/feishu")
+def push_feishu(game, run, job):
+    folder = completed_folder(game, run, job)
+    # The application supports one server process. Serialize notification requests
+    # separately from report progress so a slow webhook cannot block processing.
+    lock = current_app.extensions["feishu_lock"]
+    if not lock.acquire(blocking=False):
+        raise BusyError("正在推送，请稍候查看结果。")
+    try:
+        data = request.get_json(silent=True) or {}
+        if not isinstance(data, dict):
+            raise ValueError("请求格式无效。")
+        return jsonify(feishu.push(folder, config_for(game), retry_unknown=data.get("retry_unknown") is True))
+    finally:
+        lock.release()
 
 
 @api.get("/games/<game>/uploads/<run>/jobs/<job>/download/<kind>")

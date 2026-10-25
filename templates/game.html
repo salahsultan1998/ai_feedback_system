@@ -58,6 +58,7 @@
             </div>
             <span id="date-span" class="muted toolbar-meta"></span>
             <div id="downloads" class="downloads" hidden>
+                <button id="push-feishu" type="button" class="secondary compact" disabled>未配置飞书推送</button>
                 <a id="download-md" class="button secondary compact" href="#">Markdown ↓</a>
                 <a id="download-excel" class="button secondary compact" href="#">完整翻译 Excel ↓</a>
             </div>
@@ -67,6 +68,7 @@
             <div class="pagination"><span id="page-info" class="muted small"></span><div><button id="prev-page" type="button" class="secondary compact icon-button" aria-label="上一页"><img src="{{ url_for('static', filename='images/arrow-left.svg') }}" alt=""></button><button id="next-page" type="button" class="secondary compact icon-button" aria-label="下一页"><img src="{{ url_for('static', filename='images/arrow-right.svg') }}" alt=""></button></div></div>
         </div>
         <div id="result-section" role="tabpanel" aria-labelledby="report-tab" hidden>
+            <p id="push-status" class="muted small" role="status" aria-live="polite" hidden></p>
             <div id="report-empty" class="empty-state"><h2 id="result-title">报告尚未生成</h2><p class="muted">选择日期并生成后，报告会显示在这里。</p></div>
             <article id="report-preview" class="report-preview" hidden></article>
         </div>

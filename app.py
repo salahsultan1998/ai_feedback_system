@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 import secrets
+import threading
 
 from dotenv import load_dotenv
 from flask import Flask, jsonify
@@ -24,7 +25,7 @@ def create_app(test_config=None):
     if test_config:
         app.config.update(test_config)
     storage = Storage(Path(app.config["STORAGE_ROOT"]))
-    app.extensions.update(storage=storage, jobs=Jobs(storage, app.logger))
+    app.extensions.update(storage=storage, jobs=Jobs(storage, app.logger), feishu_lock=threading.Lock())
     app.register_blueprint(pages)
     app.register_blueprint(api)
 

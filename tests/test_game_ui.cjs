@@ -45,7 +45,11 @@ function boot() {
                 id: "job", status: "complete", message: "完成", done: 2, total: 2,
                 result: {total:1, previous_total:1, selection:{periods:{current:{start:"2026-10-19",end:"2026-10-22"}}}}
             };
-            else if (path.endsWith("/report")) data = {html:"<h1>Report</h1>"};
+            else if (path.endsWith("/report")) data = {html:"<h1>Report</h1>", feishu:{available:true,status:"unknown"}};
+            else if (path.endsWith("/push/feishu")) {
+                assert.equal(JSON.parse(options.body).retry_unknown, true);
+                data = {available:true,status:"sent",sent_at:"2026-10-26T00:00:00+00:00"};
+            }
             else data = {run:"new-upload", filename:"sample.csv",total:1,valid:1,excluded:0,
                 source_start:"2026-10-12",source_end:"2026-10-22",suggested_start:"2026-10-19",suggested_end:"2026-10-22"};
             return {ok:true,json:async()=>data};
@@ -74,6 +78,11 @@ function boot() {
     assert.equal(get("report-empty").hidden,true);
     assert.equal(get("report-preview").hidden,false);
     assert.equal(get("downloads").hidden,false);
+    assert.equal(get("push-feishu").disabled,false);
+    assert.equal(get("push-feishu").textContent,"确认本段未收到，继续推送");
+    await get("push-feishu").listeners.click();
+    assert.equal(get("push-feishu").textContent,"已推送到飞书");
+    assert.equal(get("push-feishu").disabled,true);
     get("data-tab").listeners.click();
     assert.equal(get("downloads").hidden,true);
     get("report-tab").listeners.click();

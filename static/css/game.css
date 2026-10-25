@@ -54,7 +54,8 @@ button.tab { min-height: 0; padding: 18px 0 16px; border: 0; border-bottom: 2px 
 button.tab:hover { background: transparent; color: var(--text-primary); }
 button.tab.active { border-bottom-color: var(--accent); color: var(--accent); font-weight: 600; }
 .toolbar-meta { margin-left: auto; font-size: 12px; }
-.downloads { display: flex; margin-left: auto; gap: 8px; }
+.downloads { display: flex; flex-wrap: wrap; margin-left: auto; gap: 8px; }
+#push-status { padding: 0 24px; }
 button.compact, .button.compact { min-height: 32px; padding: 6px 10px; font-size: 12px; font-weight: 500; }
 .table-scroll { overflow: auto; height: clamp(250px, 37vh, 360px); }
 table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }

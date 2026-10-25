@@ -5,6 +5,7 @@ const base = `/api/games/${encodeURIComponent(workspace.dataset.game)}/uploads`;
 const csrf = $('meta[name="csrf-token"]').content;
 let run = null, page = 1, totalPages = 1, selection = null, job = null;
 let busy = false, uploading = false, filePending = false, timer = null, selectionVersion = 0;
+let pushUnknown = false;
 
 // Start fresh on reload, including links created by the previous layout.
 const cleanUrl = new URL(window.location.href);
@@ -59,6 +60,34 @@ function post(url, data) {
 
 function runUrl() { return `${base}/${run}`; }
 function jobUrl() { return `${runUrl()}/jobs/${job}`; }
+function showPush(data = {}) {
+    const button = $("#push-feishu");
+    pushUnknown = data.status === "unknown";
+    button.disabled = !data.available || data.status === "sent";
+    button.textContent = data.status === "sent" ? "已推送到飞书" : pushUnknown ? "确认本段未收到，继续推送" : data.available ? (data.sent_parts ? "继续推送报告" : "一键推送到飞书") : "未配置飞书推送";
+    const progress = data.total_parts ? `已发送 ${data.sent_parts || 0}/${data.total_parts} 段。` : "";
+    const message = data.status === "sent" ? `推送成功 · ${data.total_parts || 1} 段 · ${new Date(data.sent_at).toLocaleString()}` : data.status === "unknown" ? `${progress}下一段发送结果未知，请先检查群消息，避免重复推送。` : progress + (data.last_error || data.reason || "");
+    $("#push-status").textContent = message;
+    $("#push-status").hidden = !message;
+}
+
+$("#push-feishu").addEventListener("click", async () => {
+    const target = jobUrl();
+    const button = $("#push-feishu");
+    if (button.disabled) return;
+    button.disabled = true;
+    button.textContent = "推送中…";
+    error("");
+    try {
+        const data = await post(`${target}/push/feishu`, {retry_unknown: pushUnknown});
+        if (target === jobUrl()) showPush(data);
+    } catch (failure) {
+        if (target !== jobUrl()) return;
+        error(failure.message);
+        try { showPush((await api(`${target}/report`)).feishu); }
+        catch (_) { button.textContent = "请检查群消息"; }
+    }
+});
 function dates() { return {start: $("#start").value, end: $("#end").value, confirmed: $("#confirm-coverage").checked}; }
 
 function controls() {
@@ -216,6 +245,7 @@ async function displayJob(data) {
         const p = data.result.selection.periods.current;
         $("#job-message").textContent = `${p.start} — ${p.end} · 本期 ${data.result.total} 条 · 上周同期 ${data.result.previous_total} 条`;
         const report = await api(`${jobUrl()}/report`);
+        showPush(report.feishu);
         $("#report-preview").innerHTML = report.html;
         $("#report-preview").hidden = false;
         $("#report-empty").hidden = true;
