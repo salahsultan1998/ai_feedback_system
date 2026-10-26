@@ -15,7 +15,7 @@ from urllib.error import HTTPError, URLError
 
 from .storage import atomic_json
 
-FORMAT = "markdown-v1"
+FORMAT = "card-markdown-v1"
 MAX_BODY_BYTES = 18000  # Below Feishu's 20 KB limit, including JSON and signatures.
 
 
@@ -46,7 +46,7 @@ def state(folder, config):
     if saved.get("status") == "sending":
         saved = {**saved, "status": "unknown"}
     if saved.get("status") == "sent" and saved.get("format") != FORMAT:
-        saved = {"status": "ready", "reason": "此前发送的是纯文本摘要，可推送新版完整报告。"}
+        saved = {"status": "ready", "reason": "此前使用旧版消息格式，可推送新版完整报告卡片。"}
     return {"available": available, "reason": reason, **saved}
 
 
@@ -55,19 +55,21 @@ def report_text(folder):
     # A relative link to a local workbook is unusable in a group message.
     text = re.sub(r"\[[^\]]*\]\(feedback_details\.xlsx\)",
                   "完整翻译明细 Excel 请在 app 中下载。", text)
-    # Feishu md does not support arbitrary HTML. Keep cell breaks inline.
+    # The card Markdown component does not support arbitrary HTML.
     return re.sub(r"<br\s*/?>", "；", text, flags=re.I).strip()
 
 
-def markdown_payload(title, text):
-    return {"msg_type": "post", "content": {"post": {"zh_cn": {
-        "title": title, "content": [[{"tag": "md", "text": text}]]}}}}
+def card_payload(title, text):
+    return {"msg_type": "interactive", "card": {
+        "schema": "2.0",
+        "header": {"title": {"tag": "plain_text", "content": title}, "template": "blue"},
+        "body": {"elements": [{"tag": "markdown", "content": text}]}}}
 
 
 def report_parts(text, title):
     """Split paragraphs and table rows; repeat headers on continued tables."""
     def fits(value):
-        payload = markdown_payload(title + "（999999/999999）", value)
+        payload = card_payload(title + "（999999/999999）", value)
         payload.update(timestamp="9" * 20, sign="x" * 44)
         return len(json.dumps(payload, ensure_ascii=False).encode()) <= MAX_BODY_BYTES
 
@@ -145,7 +147,7 @@ class NoRedirect(HTTPRedirectHandler):
 
 def send_payload(url, payload):
     request = Request(url, data=json.dumps(payload, ensure_ascii=False).encode(),
-                      headers={"Content-Type": "application/json"}, method="POST")
+                      headers={"Content-Type": "application/json; charset=utf-8"}, method="POST")
     try:
         with build_opener(NoRedirect()).open(request, timeout=15) as response:
             return json.loads(response.read())
@@ -159,7 +161,7 @@ def send_payload(url, payload):
         if not curl:
             raise ValueError("Python 无法验证飞书 HTTPS 证书。请安装系统 CA 证书或 curl 后重试。") from None
         # Keep the credential URL and report out of process arguments and logs.
-        config = f'url = "{url}"\nheader = "Content-Type: application/json"\ndata-binary = {json.dumps(json.dumps(payload, ensure_ascii=False), ensure_ascii=False)}\n'
+        config = f'url = "{url}"\nheader = "Content-Type: application/json; charset=utf-8"\ndata-binary = {json.dumps(json.dumps(payload, ensure_ascii=False), ensure_ascii=False)}\n'
         result = subprocess.run(
             [curl, "--disable", "--config", "-", "--silent", "--show-error",
              "--connect-timeout", "10", "--max-time", "20", "--proto", "=https",
@@ -187,7 +189,7 @@ def push(folder, config, retry_unknown=False):
     text = report_text(folder)
     title = re.sub(r"^#+\s*", "", text.splitlines()[0])[:100]
     parts = report_parts(text, title)
-    digest = hashlib.sha256(json.dumps(parts, ensure_ascii=False).encode()).hexdigest()
+    digest = hashlib.sha256(json.dumps([FORMAT, parts], ensure_ascii=False).encode()).hexdigest()
     completed = saved.get("sent_parts", 0) if saved.get("digest") == digest else 0
     path = folder / "feishu_push.json"
     progress = {"format": FORMAT, "digest": digest, "sent_parts": completed, "total_parts": len(parts)}
@@ -195,7 +197,7 @@ def push(folder, config, retry_unknown=False):
         if index > completed:
             time.sleep(0.65)
         numbered_title = title if len(parts) == 1 else f"{title}（{index + 1}/{len(parts)}）"
-        payload = markdown_payload(numbered_title, parts[index])
+        payload = card_payload(numbered_title, parts[index])
         if secret:
             timestamp = str(int(time.time()))
             signature = hmac.new(f"{timestamp}\n{secret}".encode(), b"", hashlib.sha256).digest()

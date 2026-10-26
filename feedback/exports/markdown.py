@@ -43,11 +43,11 @@ def render_markdown(snapshot, analysis, config):
         if notes and remaining:
             notes.append(f"另有 {remaining} 条，详见反馈明细。")
         lines.append(f"| {safe(module['label'])} | {module['count']} | {module['share']:.1%} | {module['previous']} | {change(module['count'], module['previous'])} | {'<br>'.join(notes) or '—'} |")
-    lines += ["", "[下载完整翻译明细](feedback_details.xlsx)", "", "## 统计说明", "",
-        "- 每条有效反馈只计入一个主标签；占比以本期有效反馈数为分母。",
-        "- 对比期间为报告日期向前移动七天；超过七天的期间可能重叠，处理时会去重。",
-        f"- 两期合计选择 {selection['selected_count']} 条有效记录；其余有效记录未进入处理。",
-        f"- 两期范围内排除 {selection.get('excluded_in_period', 0)} 条记录（空内容、无效 ID、重复记录或忽略标签）；上传文件另有 {selection.get('invalid_date_count', 0)} 条无效日期记录无法归属期间。",
-        "- 日期覆盖范围根据文件记录估计，不能证明源系统导出完整。" + ("本次已由上传者确认覆盖两期。" if selection["confirmed"] else ""),
-        "- 未标记重点不代表没有问题；玩家描述与 AI 概述不代表已确认的产品故障。"]
+    # lines += ["", "[下载完整翻译明细](feedback_details.xlsx)", "", "## 统计说明", "",
+    #     "- 每条有效反馈只计入一个主标签；占比以本期有效反馈数为分母。",
+    #     "- 对比期间为报告日期向前移动七天；超过七天的期间可能重叠，处理时会去重。",
+    #     f"- 两期合计选择 {selection['selected_count']} 条有效记录；其余有效记录未进入处理。",
+    #     f"- 两期范围内排除 {selection.get('excluded_in_period', 0)} 条记录（空内容、无效 ID、重复记录或忽略标签）；上传文件另有 {selection.get('invalid_date_count', 0)} 条无效日期记录无法归属期间。",
+    #     "- 日期覆盖范围根据文件记录估计，不能证明源系统导出完整。" + ("本次已由上传者确认覆盖两期。" if selection["confirmed"] else ""),
+    #     "- 未标记重点不代表没有问题；玩家描述与 AI 概述不代表已确认的产品故障。"]
     return "\n".join(lines) + "\n"

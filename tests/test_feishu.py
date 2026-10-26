@@ -11,7 +11,7 @@ from tempfile import TemporaryDirectory
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from feedback.feishu import MAX_BODY_BYTES, markdown_payload, report_parts, report_text, push, state
+from feedback.feishu import FORMAT, MAX_BODY_BYTES, card_payload, report_parts, report_text, push, state
 
 
 class FeishuTests(TestCase):
@@ -40,11 +40,14 @@ class FeishuTests(TestCase):
         payload = json.loads(opener.open.call_args.args[0].data)
         expected = base64.b64encode(hmac.new(b"123\nsecret", b"", hashlib.sha256).digest()).decode()
         self.assertEqual(payload["sign"], expected)
-        self.assertEqual(payload["msg_type"], "post")
-        markdown = payload["content"]["post"]["zh_cn"]["content"][0][0]
-        self.assertEqual(markdown["tag"], "md")
-        self.assertNotIn("feedback_details.xlsx", markdown["text"])
-        self.assertIn("建议 &amp; 问题", markdown["text"])
+        self.assertEqual(payload["msg_type"], "interactive")
+        self.assertEqual(payload["card"]["schema"], "2.0")
+        self.assertEqual(payload["card"]["header"]["title"]["tag"], "plain_text")
+        markdown = payload["card"]["body"]["elements"][0]
+        self.assertEqual(markdown["tag"], "markdown")
+        self.assertNotIn("feedback_details.xlsx", markdown["content"])
+        self.assertIn("建议 &amp; 问题", markdown["content"])
+        self.assertNotIn("content", payload)
         self.assertNotIn("secret", (self.folder / "feishu_push.json").read_text())
 
     def test_business_failure_can_retry(self):
@@ -124,7 +127,7 @@ class FeishuTests(TestCase):
         self.assertGreater(len(parts), 1)
         for part in parts:
             self.assertTrue(part.startswith("| 模块 | 说明 |\n| --- | --- |"))
-            payload = markdown_payload("反馈报告（999999/999999）", part)
+            payload = card_payload("反馈报告（999999/999999）", part)
             payload.update(timestamp="9" * 20, sign="x" * 44)
             self.assertLessEqual(len(json.dumps(payload, ensure_ascii=False).encode()), MAX_BODY_BYTES)
         for row in rows:
@@ -147,11 +150,29 @@ class FeishuTests(TestCase):
             result = push(self.folder, self.config)
         self.assertEqual(result["status"], "sent")
         self.assertEqual(sender.call_count, checkpoint["total_parts"] - 1)
-        self.assertIn("（2/", sender.call_args_list[0].args[1]["content"]["post"]["zh_cn"]["title"])
+        self.assertIn("（2/", sender.call_args_list[0].args[1]["card"]["header"]["title"]["content"])
 
     def test_legacy_plain_text_send_can_be_upgraded(self):
         (self.folder / "feishu_push.json").write_text('{"status":"sent","sent_at":"old"}')
         self.assertEqual(state(self.folder, self.config)["status"], "ready")
         with patch("feedback.feishu.send_payload", return_value={"code": 0}) as sender:
             self.assertEqual(push(self.folder, self.config)["status"], "sent")
+        sender.assert_called_once()
+
+    def test_old_post_checkpoint_does_not_skip_card_parts(self):
+        parts = report_parts(report_text(self.folder), "测试反馈报告")
+        old = {"status": "failed", "format": "markdown-v1", "sent_parts": 1,
+               "total_parts": 1, "digest": hashlib.sha256(json.dumps(parts, ensure_ascii=False).encode()).hexdigest()}
+        (self.folder / "feishu_push.json").write_text(json.dumps(old))
+        with patch("feedback.feishu.send_payload", return_value={"code": 0}) as sender:
+            result = push(self.folder, self.config)
+        self.assertEqual(result["format"], FORMAT)
+        sender.assert_called_once()
+        self.assertEqual(sender.call_args.args[1]["msg_type"], "interactive")
+
+    def test_legacy_post_success_can_be_sent_as_card(self):
+        (self.folder / "feishu_push.json").write_text('{"status":"sent","format":"markdown-v1"}')
+        self.assertEqual(state(self.folder, self.config)["status"], "ready")
+        with patch("feedback.feishu.send_payload", return_value={"code": 0}) as sender:
+            push(self.folder, self.config)
         sender.assert_called_once()
