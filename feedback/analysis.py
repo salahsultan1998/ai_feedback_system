@@ -2,6 +2,7 @@
 import json
 
 from .ai_client import cached_request, check_stop
+from .report_language import validate_report_language
 
 
 def evidence(item, allowed, config, max_chars):
@@ -10,6 +11,7 @@ def evidence(item, allowed, config, max_chars):
     text, ids = item["text"].strip(), item.get("feedback_ids")
     if not text or len(text) > max_chars or not isinstance(ids, list) or not 1 <= len(ids) <= config["report"]["max_evidence_ids"]:
         raise ValueError("AI 分析文字长度或引用数量无效。")
+    validate_report_language(text)
     if any(not isinstance(fid, str) or fid not in allowed for fid in ids) or len(set(ids)) != len(ids):
         raise ValueError("AI 分析引用了未知或重复的反馈 ID。")
     return {"text": text, "feedback_ids": ids}

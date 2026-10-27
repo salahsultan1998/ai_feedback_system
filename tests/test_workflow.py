@@ -9,8 +9,9 @@ class WorkflowTests(BaseTest):
     def test_whole_workflow_selects_four_rows_and_exports_two_sheets(self):
         with patch("feedback.ai_client.request_json",side_effect=fake_request) as request:
             result = run_report(self.root,self.config,"2026-10-19","2026-10-22",False,"first",lambda **v:None)
-            translation_calls = [c for c in request.call_args_list if "feedback" in c.args[1]]
-            self.assertEqual(len(translation_calls),4)
+            translation_calls = [c for c in request.call_args_list if "feedbacks" in c.args[1]]
+            self.assertEqual(len(translation_calls),1)
+            self.assertEqual(len(translation_calls[0].args[1]["feedbacks"]),4)
             self.assertEqual(result["total"],2)
             self.assertEqual(result["previous_total"],2)
             calls = request.call_count

@@ -35,8 +35,26 @@ Use `examples/feedback_sample.csv` for upload/preview testing and select **2026-
 - Coverage inferred from earliest/latest record dates cannot prove a complete export. Days without records are surfaced for review, not assumed missing. If a required boundary is outside the observed range, report generation is blocked unless the uploader explicitly confirms a complete export with genuinely empty boundary dates. A confirmed empty comparison period is counted as zero and identified in the report's coverage note.
 - Every selected valid record must be processed successfully before export. AI failure never silently produces a partial report.
 - Each record gets one configured main label and an optional configured subcategory. AI generates translations and evidence-linked text; Python calculates counts, shares, changes and threshold flags. Suggestions use current-period feedback across all categories.
+- Report suggestion/issue prompts always include a shared Chinese-only rule: translate Arabic names/quotations into Chinese, use a neutral Chinese description when a name cannot be identified, and never append the original Arabic wording. Common English abbreviations remain allowed. AI report text is validated before caching and retried through the normal retry policy; the final Markdown is also checked for Arabic characters (including presentation forms and HTML entities) before publishing. This rule covers the browser report and Feishu card derived from it. Original Arabic feedback in Excel/Feishu detail rows is preserved. Updating this shared report rule invalidates report-analysis caches, not the per-record translation/classification cache. Already completed report files are not rewritten automatically.
 
 ## Repository configuration only
+
+### Batch translation and classification
+
+Translation and classification share one request per batch. Global defaults in `config/settings.json` are:
+
+```json
+"classification_batch_size": 10,
+"classification_batch_max_chars": 16000
+```
+
+Both settings must be positive integers. Set either key in `config/<game>/settings.json` to override the global default for that game. `classification_batch_size` is the maximum number of uncached feedback records in one request; `concurrency` is the maximum number of simultaneous requests. With batch size 10 and concurrency 3, up to 3 requests containing up to 10 records each can run together. The last batch may be smaller.
+
+The serialized feedback input also has a character budget (`classification_batch_max_chars`, measured as characters, not tokens, and excluding the shared system prompt). Long feedback can reduce the effective batch size. A single record larger than this budget is sent alone, in full; source text is never truncated. Model context/output limits still apply. Setting the batch size to 1 retains one-record requests using the same batch protocol.
+
+Every input includes its string feedback ID; each returned translation and label is validated against the matching ID and game taxonomy. Response ordering is irrelevant. Unknown or non-string IDs are ignored, and duplicate, missing or invalid entries remain unresolved. Successful entries are saved as soon as each response is validated, before another attempt. Retries submit only unresolved entries within the existing `max_retries` budget; they never silently publish an incomplete report. Progress counts successfully processed feedback records, not requests. Stop saves completed work and prevents subsequent attempts/batches.
+
+Existing per-record caches remain valid across this change and across batch-size/concurrency changes. Processing fingerprints still use the game, model, original classification rules and feedback content; changing those rules or the model can require reprocessing. Batch input/output instructions are added at request time, so existing per-game classification prompts keep their translation/category rules. Suggestion and issue-analysis requests are unchanged. No extra paid call is made to merge translation batches.
 
 ### Manual Feishu notifications
 
@@ -48,9 +66,45 @@ Successful sends are recorded in each report folder as `feishu_push.json`; repea
 
 There is no web settings editor or configuration-write API.
 
+### Add report details to an existing Feishu spreadsheet
+
+Baloot is configured in `config/baloot/settings.json` with its Wiki URL and the spreadsheet token supplied for that document and checked through the metadata API (title: 用户反馈). The current app lacks Wiki node read permission, so the explicit token avoids needing Wiki resolution. The normal “一键推送到飞书” action now writes the detail tab first, then sends the report card containing “打开完整反馈明细”. Report generation itself does not send or upload anything.
+
+Each game can independently configure:
+
+```json
+"feishu": {
+  "enabled": true,
+  "webhook_env": "FEISHU_BALOOT_WEBHOOK",
+  "spreadsheet": {
+    "enabled": true,
+    "url": "https://your-company.feishu.cn/sheets/your-spreadsheet-token",
+    "app_id_env": "FEISHU_APP_ID",
+    "app_secret_env": "FEISHU_APP_SECRET",
+    "batch_rows": 500
+  }
+}
+```
+
+For a Wiki URL, the application resolves the underlying `sheet` with the Wiki node API. This additionally needs one of `wiki:node:read`, `wiki:wiki:readonly` or `wiki:wiki` and access to the node. Alternatively, set `spreadsheet_token` to the verified underlying spreadsheet token alongside the Wiki `url`. A Wiki node ID is not a spreadsheet token. Direct `/sheets/` URLs do not need Wiki access.
+
+Store the real `FEISHU_APP_ID` and `FEISHU_APP_SECRET` in `.env`, enable the Sheets editing API permission (`sheets:spreadsheet`), publish the application and add it to the destination spreadsheet as an editable document application. Game configurations contain environment variable names, not credentials. Games can share the application or name different credential variables. No new upload/import permission is needed for this approach.
+
+The completed Excel export is read without changing it. Its two detail sheets are combined into one new tab, retaining all 11 columns and adding 统计期间 (本期/上周同期). Feedback belonging to both periods remains in both labeled groups. IDs are kept as text; dates are numeric date values with a date format. Rows are written in bounded batches, with at most 5,000 rows per request. New tab names contain only the report date range, such as `2026.10.19-2026.10.22`. If a different report or an existing tab already occupies that name, the push stops with a rename instruction instead of overwriting it. Retrying the same report resumes its saved tab, including older tabs created with an identifier suffix; existing tabs are not renamed. This writes data and basic header/date formats; it does not copy all Excel styling or create a downloadable attachment.
+
+Date formatting uses the API-verified `yyyy/MM/dd HH:mm:ss` value, preserving the time component. The API rejects the hyphenated `yyyy-mm-dd` and `yyyy-MM-dd HH:mm:ss` strings with `90204 invalid formatter`, even though similar formats may work in Excel or the Feishu UI. The `@` text formatter is also verified and protects leading-zero IDs. A formatting failure leaves the saved row offset unchanged; retrying the same report reuses its tab.
+
+`feishu_sheet.json` in each report folder stores the target, reserved tab title/ID, row progress and completion state, never the application secret or access token. If tab creation times out, the next attempt looks up the persisted title before creating anything. If writing times out, the last unconfirmed range is overwritten on retry. Confirmed ranges are skipped. Changing the destination or completed export after a push has started is rejected; generate a new report or restore that report's original configuration. Do not remove checkpoint files to retry: use the push button. Keep storage backed up if you need duplicate protection across restarts.
+
+Use this read-only connection check (does not create tabs or send group messages):
+
+```sh
+.venv/bin/python -B -m feedback.feishu_sheets --check baloot
+```
+
 | File | Purpose |
 | --- | --- |
-| `config/settings.json` | Model, concurrency, retries, timeouts, upload/row limits, report-length limit |
+| `config/settings.json` | Model, translation/classification batch size and input budget, concurrency, retries, timeouts, upload/row limits, report-length limit |
 | `config/games.json` | Homepage names, icons, enabled games |
 | `config/baloot/settings.json` | Column mapping and ignored labels |
 | `config/baloot/report_rules.json` | Trend thresholds, suggestion/issue/evidence limits and AI input budget |

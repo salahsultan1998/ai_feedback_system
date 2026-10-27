@@ -77,6 +77,8 @@ $("#push-feishu").addEventListener("click", async () => {
     if (button.disabled) return;
     button.disabled = true;
     button.textContent = "推送中…";
+    $("#push-status").textContent = "正在准备明细并推送报告，请稍候。";
+    $("#push-status").hidden = false;
     error("");
     try {
         const data = await post(`${target}/push/feishu`, {retry_unknown: pushUnknown});

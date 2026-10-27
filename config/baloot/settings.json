@@ -12,6 +12,14 @@
   "ignored_labels": ["重复反馈", "玩家反馈不清楚", "ignore"],
   "feishu": {
     "enabled": true,
-    "webhook_env": "FEISHU_BALOOT_WEBHOOK"
+    "webhook_env": "FEISHU_BALOOT_WEBHOOK",
+    "spreadsheet": {
+      "enabled": true,
+      "url": "https://aozalj10qx.feishu.cn/wiki/HmaVwb2wAixEsbka6rDcACGznob",
+      "spreadsheet_token": "DsgwsQUGvhqwXpthokEcy3i5nPh",
+      "app_id_env": "FEISHU_APP_ID",
+      "app_secret_env": "FEISHU_APP_SECRET",
+      "batch_rows": 500
+    }
   }
 }

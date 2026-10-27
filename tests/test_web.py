@@ -52,7 +52,7 @@ class WebTests(BaseTest):
             result.close()
         html=self.client.get(job+"/report").get_json()["html"]
         self.assertIn("<table>",html)
-        self.assertIn(job+"/download/excel",html)
+        self.assertNotIn('href="feedback_details.xlsx"',html)
         self.assertEqual(self.client.post(job+"/push/feishu").status_code, 403)
         with patch("web.api.feishu.push", return_value={"available": True, "status": "sent", "sent_at": "2026-10-26T00:00:00+00:00"}) as sender:
             pushed = self.client.post(job+"/push/feishu", json={}, headers=self.headers)

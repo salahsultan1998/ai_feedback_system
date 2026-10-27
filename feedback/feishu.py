@@ -14,6 +14,7 @@ from urllib.request import Request, build_opener, HTTPRedirectHandler
 from urllib.error import HTTPError, URLError
 
 from .storage import atomic_json
+from . import feishu_sheets
 
 FORMAT = "card-markdown-v1"
 MAX_BODY_BYTES = 18000  # Below Feishu's 20 KB limit, including JSON and signatures.
@@ -40,6 +41,14 @@ def state(folder, config):
         reason = ""
     except ValueError as error:
         available, reason = False, str(error)
+    sheet_settings = feishu_sheets.settings_for(config)
+    sheet = feishu_sheets.saved_state(folder) if sheet_settings else {}
+    if sheet_settings:
+        try:
+            feishu_sheets.destination(sheet_settings)
+            feishu_sheets.Client(sheet_settings)
+        except ValueError as error:
+            available, reason = False, str(error)
     path = folder / "feishu_push.json"
     saved = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     # An interrupted process may have sent the message before saving success.
@@ -47,14 +56,24 @@ def state(folder, config):
         saved = {**saved, "status": "unknown"}
     if saved.get("status") == "sent" and saved.get("format") != FORMAT:
         saved = {"status": "ready", "reason": "此前使用旧版消息格式，可推送新版完整报告卡片。"}
-    return {"available": available, "reason": reason, **saved}
+    if sheet_settings and saved.get("status") == "sent" and not saved.get("sheet_url"):
+        saved = {"status": "ready", "reason": "此前卡片未包含在线明细，可推送明细页签及新版卡片。"}
+    result = {**saved, "available": available, "reason": reason or saved.get("reason", "")}
+    if sheet_settings:
+        result["sheet"] = {key: sheet[key] for key in
+                           ("status", "url", "title", "written_rows", "total_rows", "error") if key in sheet}
+        if sheet.get("status") == "failed":
+            result["last_error"] = sheet.get("error", "明细推送失败，请重试。")
+    return result
 
 
-def report_text(folder):
+def report_text(folder, detail_url=None):
     text = (folder / "report.md").read_text(encoding="utf-8")
     # A relative link to a local workbook is unusable in a group message.
-    text = re.sub(r"\[[^\]]*\]\(feedback_details\.xlsx\)",
-                  "完整翻译明细 Excel 请在 app 中下载。", text)
+    replacement = f"[打开完整反馈明细]({detail_url})" if detail_url else "完整翻译明细 Excel 请在 app 中下载。"
+    text, count = re.subn(r"\[[^\]]*\]\(feedback_details\.xlsx\)", lambda _: replacement, text)
+    if detail_url and not count:
+        text += "\n\n" + replacement
     # The card Markdown component does not support arbitrary HTML.
     return re.sub(r"<br\s*/?>", "；", text, flags=re.I).strip()
 
@@ -186,13 +205,16 @@ def push(folder, config, retry_unknown=False):
         return saved
     if saved.get("status") == "unknown" and not retry_unknown:
         raise ValueError("上次发送结果未知，请先检查群消息；为避免重复，本报告暂不再次发送。")
-    text = report_text(folder)
+    sheet = feishu_sheets.sync(folder, config)
+    text = report_text(folder, sheet["url"] if sheet else None)
     title = re.sub(r"^#+\s*", "", text.splitlines()[0])[:100]
     parts = report_parts(text, title)
     digest = hashlib.sha256(json.dumps([FORMAT, parts], ensure_ascii=False).encode()).hexdigest()
     completed = saved.get("sent_parts", 0) if saved.get("digest") == digest else 0
     path = folder / "feishu_push.json"
     progress = {"format": FORMAT, "digest": digest, "sent_parts": completed, "total_parts": len(parts)}
+    if sheet:
+        progress["sheet_url"] = sheet["url"]
     for index in range(completed, len(parts)):
         if index > completed:
             time.sleep(0.65)

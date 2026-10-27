@@ -2,6 +2,8 @@
 import json
 from pathlib import Path
 
+from .report_language import REPORT_LANGUAGE_INSTRUCTIONS
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -32,8 +34,9 @@ def load_config(code, root=ROOT):
     config = {**load_settings(root), **read_json(folder / "settings.json")}
     config.update(game=code, name=game["name"], schema=read_json(folder / "labels.json"),
                   report=read_json(folder / "report_rules.json"))
-    for key in ("concurrency", "timeout_seconds", "max_rows", "max_report_days"):
-        if not isinstance(config[key], int) or config[key] < 1:
+    for key in ("concurrency", "timeout_seconds", "max_rows", "max_report_days",
+                "classification_batch_size", "classification_batch_max_chars"):
+        if type(config[key]) is not int or config[key] < 1:
             raise ValueError(f"配置 {key} 必须为正整数。")
     if config["max_retries"] < 0 or config["retry_delay"] < 0:
         raise ValueError("重试配置不可为负数。")
@@ -52,4 +55,6 @@ def load_config(code, root=ROOT):
             raise ValueError("分类提示词缺少 {{LABEL_SCHEMA}}。")
         config[name + "_prompt"] = prompt.replace("{{GAME_NAME}}", game["name"]).replace(
             "{{LABEL_SCHEMA}}", json.dumps(config["schema"], ensure_ascii=False))
+        if name in {"suggestions", "issues"}:
+            config[name + "_prompt"] += REPORT_LANGUAGE_INSTRUCTIONS
     return config

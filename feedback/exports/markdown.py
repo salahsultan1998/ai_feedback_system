@@ -1,6 +1,8 @@
 """Human-readable Chinese report, shared by browser preview and download."""
 import html
 
+from ..report_language import validate_report_language
+
 
 def safe(text):
     value = html.escape(str(text).replace("\r", " ").replace("\n", " "), quote=False)
@@ -50,4 +52,4 @@ def render_markdown(snapshot, analysis, config):
     #     f"- 两期范围内排除 {selection.get('excluded_in_period', 0)} 条记录（空内容、无效 ID、重复记录或忽略标签）；上传文件另有 {selection.get('invalid_date_count', 0)} 条无效日期记录无法归属期间。",
     #     "- 日期覆盖范围根据文件记录估计，不能证明源系统导出完整。" + ("本次已由上传者确认覆盖两期。" if selection["confirmed"] else ""),
     #     "- 未标记重点不代表没有问题；玩家描述与 AI 概述不代表已确认的产品故障。"]
-    return "\n".join(lines) + "\n"
+    return validate_report_language("\n".join(lines) + "\n")
