@@ -104,19 +104,38 @@ function controls() {
 async function showPage(number) {
     const data = await api(`${runUrl()}/preview?page=${number}`);
     const header = document.createElement("tr");
-    for (const name of data.columns) {
+    const extraInfoColumn = data.columns.indexOf("附加信息");
+    for (const [index, name] of data.columns.entries()) {
         const cell = document.createElement("th");
         cell.scope = "col";
         cell.textContent = name;
+        if (index === extraInfoColumn) cell.classList.add("extra-info-column");
         header.append(cell);
     }
     $("#data-table thead").replaceChildren(header);
     const rows = data.rows.map(values => {
         const row = document.createElement("tr");
-        for (const value of values) {
+        for (const [index, value] of values.entries()) {
             const cell = document.createElement("td");
-            cell.textContent = value;
             cell.dir = "auto";
+            if (index === extraInfoColumn) {
+                cell.classList.add("extra-info-column");
+                if (value.length > 120) {
+                    const details = document.createElement("details");
+                    const summary = document.createElement("summary");
+                    const content = document.createElement("span");
+                    content.className = "extra-info-text";
+                    content.textContent = value;
+                    summary.title = "点击展开或收起完整附加信息";
+                    summary.append(content);
+                    details.append(summary);
+                    cell.append(details);
+                } else {
+                    cell.textContent = value;
+                }
+            } else {
+                cell.textContent = value;
+            }
             row.append(cell);
         }
         return row;

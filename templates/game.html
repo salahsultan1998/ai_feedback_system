@@ -5,7 +5,7 @@
 <a class="back-link" href="{{ url_for('pages.home') }}">← 返回游戏</a>
 <header class="workspace-heading">
     <span class="game-avatar" aria-hidden="true">
-        {% if game.code == 'baloot' %}<img src="{{ url_for('static', filename='images/baloot-spade.svg') }}" alt="">{% else %}<img src="{{ url_for('static', filename='images/' + game.image) }}" alt="">{% endif %}
+        <img src="{{ url_for('static', filename='images/' + game.image) }}" alt="">
     </span>
     <div><h1 class="title">{{ game.name }}</h1><p class="muted heading-note">玩家反馈报告</p></div>
 </header>
