@@ -15,25 +15,31 @@ hr { display: none; }
 .panel { box-shadow: none; }
 .controls-panel { margin-top: 28px; padding: 22px 24px; border-radius: 16px; }
 .panel + .panel { margin-top: 26px; }
-.file-row { display: flex; align-items: center; gap: 14px; min-width: 0; }
-.file-icon { display: grid; width: 38px; height: 38px; flex: 0 0 auto; place-items: center; border-radius: 10px; background: #f5f5f5; }
-.file-icon img { display: block; width: 20px; height: 20px; }
-.file-picker { position: relative; min-width: 0; flex: 1; overflow-wrap: anywhere; font-size: 14px; font-weight: 600; color: var(--text-primary); cursor: pointer; padding: 5px 0; }
+.file-row { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.file-icon { display: grid; width: 40px; height: 40px; flex: 0 0 auto; place-items: center; border-radius: 10px; background: #eaf1ff; }
+.file-icon img { display: block; width: 24px; height: 24px; }
+.file-picker { position: relative; display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; padding: 16px; border: 1px dashed #a9bddc; border-radius: 12px; background: #f8faff; color: var(--text-primary); cursor: pointer; transition: border-color .2s, background .2s; }
+.file-details { display: grid; gap: 4px; min-width: 0; flex: 1; }
+#file-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
+.file-picker-note { color: var(--text-secondary); font-size: 12px; }
 .file-picker input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
-.change-file { margin-left: 10px; color: var(--text-secondary); font-size: 12px; font-weight: 400; white-space: nowrap; }
-.file-picker:focus-within { outline: 3px solid #c9c9c9; outline-offset: 3px; border-radius: 4px; }
-.file-picker.dragging { background: #f5f5f5; }
-.file-summary { margin-left: auto; color: var(--text-secondary); text-align: right; font-size: 12px; }
-#upload-button { min-height: 40px; padding: 8px 14px; border-color: var(--border); }
-#upload-note { margin: 9px 0 0 52px; font-size: 12px; }
+.change-file { flex: 0 0 auto; padding: 6px 10px; border-radius: 7px; background: #e8efff; color: #1d4ed8; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.file-picker:hover, .file-picker.dragging { border-color: #2563eb; background: #eef4ff; }
+.file-picker:focus-within { outline: 3px solid #bfdbfe; outline-offset: 3px; }
+.file-picker:has(input:disabled) { opacity: .65; cursor: wait; }
+.upload-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 10px; }
+.file-summary { color: var(--text-secondary); font-size: 12px; }
+#upload-button { min-height: 40px; flex: 0 0 auto; margin-left: auto; padding: 8px 14px; border-color: var(--border); }
+#upload-note { margin: 0; font-size: 12px; }
 
 #report-form { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
 .date-fields { display: flex; align-items: center; gap: 14px; }
 .date-fields::before { content: "报告期间\A日期含首尾当天 · 会自动比较上周同期"; flex: 1; min-width: 170px; white-space: pre-line; color: var(--text-secondary); font-size: 12px; line-height: 1.55; }
-.date-fields label { display: grid; width: 170px; gap: 6px; border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; color: var(--text-secondary); font-size: 11px; }
-input[type=date] { width: 100%; min-height: 28px; border: 0; border-radius: 0; padding: 0; background: transparent; color: var(--text-primary); font-size: 13px; }
-.date-arrow { padding: 0; color: var(--text-secondary); }
+.date-fields label { display: grid; width: 170px; min-width: 0; border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; }
+input[type=date] { width: 100%; min-width: 0; min-height: 28px; border: 0; border-radius: 0; padding: 0; background: transparent; color: var(--text-primary); font-size: 13px; }
+.date-arrow { flex: 0 0 auto; padding: 0; color: var(--text-secondary); }
 #generate-button { min-height: 40px; margin-left: 0; padding: 8px 14px; }
+#generate-button:disabled { opacity: 1; border-color: #e2e8f0; background: #e9edf2; color: #6b7280; }
 .comparison { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 15px 0 0; font-size: 12px; color: var(--text-secondary); }
 .comparison strong { color: var(--text-primary); font-weight: 600; }
 #selection-note { margin: 7px 0 0; font-size: 12px; }
@@ -43,6 +49,10 @@ input[type=date] { width: 100%; min-height: 28px; border: 0; border-radius: 0; p
 .check input { margin: 5px 0 0; accent-color: var(--accent); }
 #job-status { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
 .status-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.status-copy { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.loading-spinner { width: 15px; height: 15px; flex: 0 0 auto; border: 2px solid #e2e8f0; border-top-color: #475569; border-radius: 50%; animation: processing-spin .8s linear infinite; }
+@keyframes processing-spin { to { transform: rotate(360deg); } }
+@media(prefers-reduced-motion:reduce) { .loading-spinner { animation: none; } }
 progress { display: block; width: 100%; height: 5px; margin-top: 10px; border: 0; border-radius: 10px; overflow: hidden; accent-color: var(--accent); }
 progress::-webkit-progress-bar { background: #ededed; border-radius: 10px; }
 progress::-webkit-progress-value { background: var(--accent); border-radius: 10px; }
@@ -88,13 +98,11 @@ tbody tr:hover td { background: #fafafa; }
     .page { width: calc(100% - 32px); padding-top: 36px; padding-bottom: 48px; }
     .controls-panel { padding: 18px; }
     .file-row { flex-wrap: wrap; gap: 10px; }
-    .file-picker { min-width: 180px; }
-    .file-summary { width: 100%; margin-left: 52px; text-align: left; }
-    #upload-note { margin-left: 52px; }
+    .file-picker { flex-basis: 100%; padding: 14px; }
+    .file-summary { width: 100%; }
     .date-fields { flex-wrap: wrap; }
     .date-fields::before { flex-basis: 100%; }
     .date-fields label { flex: 1; width: auto; }
-    .date-arrow { display: none; }
     #generate-button { width: 100%; }
     .content-toolbar { flex-wrap: wrap; gap: 0 16px; padding: 0 18px; }
     .downloads { padding: 8px 0; }

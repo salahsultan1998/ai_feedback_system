@@ -6,6 +6,7 @@ const csrf = $('meta[name="csrf-token"]').content;
 let run = null, page = 1, totalPages = 1, selection = null, job = null;
 let busy = false, uploading = false, filePending = false, timer = null, selectionVersion = 0;
 let pushUnknown = false;
+let reportComplete = false;
 
 // Start fresh on reload, including links created by the previous layout.
 const cleanUrl = new URL(window.location.href);
@@ -98,7 +99,9 @@ function controls() {
     $("#start").disabled = busy;
     $("#end").disabled = busy;
     $("#confirm-coverage").disabled = busy;
-    $("#generate-button").disabled = busy || uploading || filePending || !selection?.ready;
+    $("#generate-button").disabled = busy || uploading || filePending || reportComplete || !selection?.ready;
+    $("#generate-button").textContent = reportComplete ? "报告已生成" : busy ? "生成中…" : "生成报告 ↗";
+    $("#job-spinner").hidden = !busy;
 }
 
 async function showPage(number) {
@@ -183,10 +186,12 @@ async function checkSelection() {
 
 async function loadUpload(metadata) {
     run = metadata.run;
+    reportComplete = false;
     $("#content-section").hidden = false;
     $("#report-form").hidden = false;
     $("#file-summary").textContent = `${metadata.total.toLocaleString()} 行 · ${metadata.valid.toLocaleString()} 条有效 · ${metadata.excluded.toLocaleString()} 条排除`;
     $("#file-label").textContent = metadata.filename;
+    $("#file-label").title = metadata.filename;
     $("#change-file").hidden = false;
     $("#date-span").textContent = `${metadata.source_start} — ${metadata.source_end}`;
     $("#upload-note").hidden = true;
@@ -200,7 +205,9 @@ async function loadUpload(metadata) {
 
 $("#file").addEventListener("change", () => {
     $("#file-label").textContent = $("#file").files[0]?.name || "点击选择或拖入反馈文件";
+    $("#file-label").title = $("#file").files[0]?.name || "";
     filePending = $("#file").files.length > 0;
+    $("#change-file").hidden = !filePending && !run;
     controls();
 });
 for (const type of ["dragenter", "dragover"]) $("#upload-zone").addEventListener(type, () => $("#upload-zone").classList.add("dragging"));
@@ -239,13 +246,18 @@ $("#upload-form").addEventListener("submit", async event => {
 $("#prev-page").addEventListener("click", () => showPage(Math.max(1, page - 1)).catch(f => error(f.message)));
 $("#next-page").addEventListener("click", () => showPage(Math.min(totalPages, page + 1)).catch(f => error(f.message)));
 for (const id of ["#start", "#end"]) $(id).addEventListener("change", () => {
+    reportComplete = false;
     $("#confirm-coverage").checked = false;
-    checkSelection();
+    return checkSelection();
 });
-$("#confirm-coverage").addEventListener("change", checkSelection);
+$("#confirm-coverage").addEventListener("change", () => {
+    reportComplete = false;
+    return checkSelection();
+});
 
 async function displayJob(data) {
     busy = ["running", "stopping"].includes(data.status);
+    reportComplete = data.status === "complete";
     controls();
     $("#job-status").hidden = false;
     $("#job-message").textContent = data.message + (data.total ? ` · ${data.done} / ${data.total}` : "");
@@ -286,9 +298,13 @@ async function pollJob() {
 
 $("#report-form").addEventListener("submit", async event => {
     event.preventDefault();
-    if (busy || !selection?.ready) return;
+    if (busy || uploading || filePending || reportComplete || !selection?.ready) return;
     busy = true;
     controls();
+    $("#job-status").hidden = false;
+    $("#job-message").textContent = "正在准备生成报告…";
+    $("#job-progress").hidden = false;
+    $("#job-progress").removeAttribute("value");
     error("");
     try {
         const data = await post(`${runUrl()}/reports`, dates());
@@ -299,7 +315,12 @@ $("#report-form").addEventListener("submit", async event => {
         $("#download-md").removeAttribute("data-ready");
         $("#downloads").hidden = true;
         await displayJob(data);
-    } catch (failure) { busy = false; controls(); error(failure.message); }
+    } catch (failure) {
+        busy = false;
+        controls();
+        $("#job-status").hidden = true;
+        error(failure.message);
+    }
 });
 
 $("#stop-button").addEventListener("click", async () => {

@@ -18,22 +18,24 @@
     <section class="panel controls-panel" aria-label="文件与报告日期">
         <form id="upload-form">
             <div class="file-row">
-                <span class="file-icon" aria-hidden="true"><img src="{{ url_for('static', filename='images/file-icon.svg') }}" alt=""></span>
                 <label class="file-picker" id="upload-zone">
-                    <span id="file-label">选择或拖入 CSV / Excel 文件</span>
+                    <span class="file-icon" aria-hidden="true"><img src="{{ url_for('static', filename='images/upload-icon.svg') }}" alt=""></span>
+                    <span class="file-details"><span id="file-label">上传反馈文件</span><span class="file-picker-note">点击选择文件，或拖入这里</span></span>
                     <span id="change-file" class="change-file" hidden>更换文件</span>
                     <input id="file" type="file" name="file" accept=".csv,.xlsx" required aria-label="选择反馈文件">
                 </label>
                 <button id="upload-button" type="submit" class="secondary compact">上传并预览</button>
-                <span id="file-summary" class="muted small file-summary">请包含本期及上周同期的完整反馈</span>
             </div>
-            <p id="upload-note" class="muted small">支持 CSV、.xlsx；Excel 仅读取第一个工作表。上传不会调用 AI。</p>
+            <div class="upload-meta">
+                <span id="file-summary" class="muted small file-summary">请包含本期及上周同期的完整反馈</span>
+                <p id="upload-note" class="muted small">支持 CSV、.xlsx；Excel 仅读取第一个工作表。上传不会调用 AI。</p>
+            </div>
         </form>
         <form id="report-form" hidden>
             <div class="date-fields">
-                <label>开始日期<input type="date" id="start" name="start" required></label>
+                <label><input type="date" id="start" name="start" required aria-label="开始日期"></label>
                 <span class="date-arrow" aria-hidden="true">→</span>
-                <label>结束日期<input type="date" id="end" name="end" required></label>
+                <label><input type="date" id="end" name="end" required aria-label="结束日期"></label>
                 <button id="generate-button" type="submit" disabled>生成报告 ↗</button>
             </div>
             <div id="selection-summary" hidden>
@@ -45,7 +47,7 @@
             <p class="muted cost-note">日期含首尾当天 · 生成会调用 AI，可能产生 API 费用</p>
         </form>
         <div id="job-status" hidden>
-            <div class="status-line"><span id="job-message" class="muted small" role="status" aria-live="polite"></span><button id="stop-button" type="button" class="secondary compact" hidden>停止处理</button></div>
+            <div class="status-line"><div class="status-copy"><span id="job-spinner" class="loading-spinner" aria-hidden="true" hidden></span><span id="job-message" class="muted small" role="status" aria-live="polite"></span></div><button id="stop-button" type="button" class="secondary compact" hidden>停止处理</button></div>
             <progress id="job-progress" aria-label="报告处理进度" hidden></progress>
         </div>
     </section>
