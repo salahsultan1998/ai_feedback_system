@@ -35,7 +35,8 @@ def fragments(rows, config):
     for row in rows.sort_values("反馈ID").to_dict("records"):
         for offset in range(0, len(row["中文翻译"]), size):
             yield {"feedback_id": str(row["反馈ID"]), "label": row["最终标签"],
-                   "theme": row["具体主题"] or "未细分", "text": row["中文翻译"][offset:offset + size]}
+                   "theme": row["具体主题"] or "未细分", "is_suggestion": row["是否建议"] == "是",
+                   "text": row["中文翻译"][offset:offset + size]}
 
 
 def analyze_report(snapshot, config, cache_dir, progress, should_stop=None):
@@ -61,7 +62,8 @@ def analyze_report(snapshot, config, cache_dir, progress, should_stop=None):
     progress(stage="analysis", message="正在提炼玩家建议", done=0, total=0)
     meta = {"stage": "提取", "max_items": rules["max_suggestions"], "max_evidence_ids": rules["max_evidence_ids"]}
     suggestions = []
-    initial_batches = list(batches(fragments(snapshot["current"], config), meta, limit))
+    suggestion_rows = snapshot["current"].loc[snapshot["current"]["是否建议"].eq("是")]
+    initial_batches = list(batches(fragments(suggestion_rows, config), meta, limit))
     for batch in initial_batches:
         suggestions.extend(ask("suggestions", batch, meta, True)["suggestions"])
     if len(initial_batches) > 1 and suggestions:

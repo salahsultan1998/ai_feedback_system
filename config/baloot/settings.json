@@ -9,7 +9,7 @@
     "反馈标签": "反馈标签",
     "用户主动选择的标签": "用户主动选择的标签"
   },
-  "ignored_labels": ["重复反馈", "玩家反馈不清楚", "ignore"],
+  "ignored_labels": ["重复反馈", "玩家反馈不清楚", "无效反馈", "ignore"],
   "feishu": {
     "enabled": true,
     "webhook_env": "FEISHU_BALOOT_WEBHOOK",

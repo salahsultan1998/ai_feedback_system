@@ -77,7 +77,9 @@ class SheetTests(BaseTest):
     def test_merge_fields_periods_ids_dates_and_literal_feedback(self):
         rows = feishu_sheets.detail_rows(self.folder)
         self.assertEqual(len(rows), 5)
-        self.assertEqual(len(rows[0]), 12)
+        self.assertEqual(len(rows[0]), 13)
+        self.assertEqual(rows[0][-1], "是否建议")
+        self.assertEqual(rows[1][-1], "是")
         self.assertEqual([row[0] for row in rows[1:]], ["本期", "本期", "上周同期", "上周同期"])
         self.assertEqual(rows[1][3], "004")
         self.assertEqual(rows[1][4], "0009")
@@ -130,16 +132,38 @@ class SheetTests(BaseTest):
         self.assertEqual(self.server.sheets[-1]["title"], saved["create_title"])
 
     def test_partial_write_retries_from_unconfirmed_range(self):
-        self.server.fail_range = "tab1!A3:L4"
+        end = feishu_sheets.get_column_letter(1 + len(feishu_sheets.COLUMNS))
+        self.server.fail_range = f"tab1!A3:{end}4"
         with self.assertRaisesRegex(ValueError, "写入请求超时"):
             feishu_sheets.sync(self.folder, self.config)
         self.assertEqual(feishu_sheets.saved_state(self.folder)["written_rows"], 2)
         first_batch_calls = len([1 for _, path, data in self.server.calls
-                                 if path.endswith("/values") and data["valueRange"]["range"] == "tab1!A1:L2"])
+                                 if path.endswith("/values") and data["valueRange"]["range"] == f"tab1!A1:{end}2"])
         feishu_sheets.sync(self.folder, self.config)
         self.assertEqual(len(self.creates()), 1)
         self.assertEqual(len([1 for _, path, data in self.server.calls
-                              if path.endswith("/values") and data["valueRange"]["range"] == "tab1!A1:L2"]), first_batch_calls)
+                              if path.endswith("/values") and data["valueRange"]["range"] == f"tab1!A1:{end}2"]), first_batch_calls)
+
+    def test_legacy_report_keeps_original_columns_and_can_resume(self):
+        from openpyxl import load_workbook
+        book = load_workbook(self.folder / "feedback_details.xlsx")
+        for sheet in book:
+            sheet.delete_cols(len(feishu_sheets.COLUMNS))
+            for table in sheet.tables.values():
+                table.ref = f"A4:K{sheet.max_row}"
+                table.autoFilter.ref = table.ref
+                table.tableColumns = table.tableColumns[:-1]
+        book.save(self.folder / "feedback_details.xlsx")
+        book.close()
+        rows = feishu_sheets.detail_rows(self.folder)
+        self.assertEqual(len(rows[0]), 12)
+        self.assertNotIn("是否建议", rows[0])
+        self.assertEqual(rows[1][3], "004")
+        self.assertEqual(rows[1][8], "'=1+1")
+        self.assertEqual(feishu_sheets.sync(self.folder, self.config)["status"], "complete")
+        count = len(self.server.calls)
+        self.assertEqual(feishu_sheets.sync(self.folder, self.config)["status"], "complete")
+        self.assertEqual(len(self.server.calls), count)
 
     def test_date_format_retains_time_and_uses_verified_api_format(self):
         feishu_sheets.sync(self.folder, self.config)

@@ -28,6 +28,7 @@ def run_report(folder, config, start, end, confirmed, job_id, progress, should_s
     check_stop(should_stop)
     progress(stage="statistics", message="正在计算同期趋势", done=0, total=0)
     snapshot = build_statistics(processed, info, config)
+    info = snapshot["selection"]
     analysis = analyze_report(snapshot, config, folder / "analysis_cache", progress, should_stop)
     check_stop(should_stop)
     progress(stage="export", message="正在生成报告与翻译明细", done=0, total=0)
@@ -42,4 +43,5 @@ def run_report(folder, config, start, end, confirmed, job_id, progress, should_s
     (output / "report.tmp.md").replace(output / "report.md")
     atomic_json(output / "config_snapshot.json", config)
     return {"total": snapshot["total"], "previous_total": snapshot["previous_total"],
-            "suggestions": len(analysis["suggestions"]), "selection": info}
+            "suggestions": len(analysis["suggestions"]),
+            "suggestion_feedback_count": snapshot["suggestion_feedback_count"], "selection": info}

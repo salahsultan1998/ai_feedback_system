@@ -3,6 +3,7 @@ const $ = selector => document.querySelector(selector);
 const workspace = $("#workspace");
 const base = `/api/games/${encodeURIComponent(workspace.dataset.game)}/uploads`;
 const csrf = $('meta[name="csrf-token"]').content;
+const uploadHint = $("#file-summary").textContent;
 let run = null, page = 1, totalPages = 1, selection = null, job = null;
 let busy = false, uploading = false, filePending = false, timer = null, selectionVersion = 0;
 let pushUnknown = false;
@@ -165,8 +166,8 @@ async function checkSelection() {
         $("#selection-summary").hidden = false;
         const previous = data.periods.previous;
         $("#previous-period").textContent = `${previous.start} — ${previous.end}`;
-        $("#period-counts").textContent = `本期 ${data.current_count.toLocaleString()} 条 · 上周同期 ${data.previous_count.toLocaleString()} 条`;
-        $("#selection-note").textContent = `仅处理两期共 ${data.selected_count.toLocaleString()} 条有效反馈，范围外 ${data.outside_count.toLocaleString()} 条不参与处理。两期排除 ${data.excluded_in_period} 条。`;
+        $("#period-counts").textContent = `本期待分析 ${data.current_count.toLocaleString()} 条 · 上周同期待分析 ${data.previous_count.toLocaleString()} 条`;
+        $("#selection-note").textContent = `仅处理两期共 ${data.selected_count.toLocaleString()} 条候选反馈，范围外 ${data.outside_count.toLocaleString()} 条不参与处理。两期已按数据规则排除 ${data.excluded_in_period} 条。`;
         const noRecords = [...new Set([...data.days_without_records.current, ...data.days_without_records.previous])];
         const warning = $("#coverage-warning");
         warning.hidden = !noRecords.length && data.inferred_covered;
@@ -189,12 +190,11 @@ async function loadUpload(metadata) {
     reportComplete = false;
     $("#content-section").hidden = false;
     $("#report-form").hidden = false;
-    $("#file-summary").textContent = `${metadata.total.toLocaleString()} 行 · ${metadata.valid.toLocaleString()} 条有效 · ${metadata.excluded.toLocaleString()} 条排除`;
+    $("#file-summary").textContent = `${metadata.total.toLocaleString()} 行 · ${metadata.valid.toLocaleString()} 条待分析 · ${metadata.excluded.toLocaleString()} 条排除`;
     $("#file-label").textContent = metadata.filename;
     $("#file-label").title = metadata.filename;
     $("#change-file").hidden = false;
     $("#date-span").textContent = `${metadata.source_start} — ${metadata.source_end}`;
-    $("#upload-note").hidden = true;
     $("#start").value = metadata.suggested_start;
     $("#end").value = metadata.suggested_end;
     $("#confirm-coverage").checked = false;
@@ -204,8 +204,9 @@ async function loadUpload(metadata) {
 }
 
 $("#file").addEventListener("change", () => {
-    $("#file-label").textContent = $("#file").files[0]?.name || "点击选择或拖入反馈文件";
+    $("#file-label").textContent = $("#file").files[0]?.name || "点击选择文件，或拖入这里";
     $("#file-label").title = $("#file").files[0]?.name || "";
+    $("#file-summary").textContent = uploadHint;
     filePending = $("#file").files.length > 0;
     $("#change-file").hidden = !filePending && !run;
     controls();
@@ -277,6 +278,12 @@ async function displayJob(data) {
         $("#download-md").dataset.ready = "true";
         const p = data.result.selection.periods.current;
         $("#job-message").textContent = `${p.start} — ${p.end} · 本期 ${data.result.total} 条 · 上周同期 ${data.result.previous_total} 条`;
+        const finalSelection = data.result.selection;
+        if (Number.isInteger(finalSelection.processed_count)) {
+            $("#period-counts").textContent = `本期有效 ${data.result.total.toLocaleString()} 条 · 上周同期有效 ${data.result.previous_total.toLocaleString()} 条`;
+            $("#selection-note").textContent = `已分析 ${finalSelection.processed_count.toLocaleString()} 条候选反馈，保留两期共 ${finalSelection.selected_count.toLocaleString()} 条有效反馈。` +
+                (finalSelection.semantic_excluded_in_period ? `另排除 ${finalSelection.semantic_excluded_in_period} 条内容不明确或无法理解的反馈，原文与原因见 Excel“排除反馈明细”。` : "");
+        }
         const report = await api(`${jobUrl()}/report`);
         showPush(report.feishu);
         $("#report-preview").innerHTML = report.html;

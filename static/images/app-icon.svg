@@ -1,0 +1,11 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<linearGradient id="app-icon-background" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+<stop stop-color="#2563EB"/>
+<stop offset="1" stop-color="#60A5FA"/>
+</linearGradient>
+</defs>
+<rect width="64" height="64" rx="18" fill="url(#app-icon-background)"/>
+<path d="M20 16H44C47.3137 16 50 18.6863 50 22V38C50 41.3137 47.3137 44 44 44H30L20 51V44C16.6863 44 14 41.3137 14 38V22C14 18.6863 16.6863 16 20 16Z" stroke="white" stroke-width="3" stroke-linejoin="round"/>
+<path d="M24 34V30M32 34V25M40 34V21" stroke="white" stroke-width="3" stroke-linecap="round"/>
+</svg>

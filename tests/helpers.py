@@ -19,10 +19,12 @@ def rows(config):
 def fake_request(prompt, payload, config, validate, should_stop=None):
     if "feedbacks" in payload:
         return validate({"results": [{"feedback_id": item["feedback_id"],
-            "translation_zh": "玩家建议改善游戏连接。", "label": "游戏卡顿", "theme": ""}
+            "translation_zh": "玩家建议改善游戏连接。", "label": "游戏卡顿", "theme": "",
+            "is_suggestion": True, "is_valid": True, "exclusion_reason": ""}
             for item in payload["feedbacks"]]})
     if "feedback" in payload:
-        return validate({"translation_zh": "玩家建议改善游戏连接。", "label": "游戏卡顿", "theme": ""})
+        return validate({"translation_zh": "玩家建议改善游戏连接。", "label": "游戏卡顿", "theme": "",
+                         "is_suggestion": True, "is_valid": True, "exclusion_reason": ""})
     ids = [payload["items"][0].get("feedback_id") or payload["items"][0]["feedback_ids"][0]]
     if "label" in payload:
         return validate({"text": "玩家反映连接中断，希望改善连接。", "feedback_ids": ids})

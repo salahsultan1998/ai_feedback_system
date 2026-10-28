@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ session['csrf'] }}">
     <title>{% block title %}AI 反馈统计{% endblock %}</title>
+    {% block favicon %}<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/app-icon.svg') }}">{% endblock %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     {% block head %}{% endblock %}
 </head>
@@ -13,4 +14,3 @@
     {% block scripts %}{% endblock %}
 </body>
 </html>
- 

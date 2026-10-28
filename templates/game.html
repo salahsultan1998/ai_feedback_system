@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ game.name }} · AI 反馈统计{% endblock %}
+{% block favicon %}<link rel="icon" href="{{ url_for('static', filename='images/' + game.image) }}">{% endblock %}
 {% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/game.css') }}">{% endblock %}
 {% block content %}
 <a class="back-link" href="{{ url_for('pages.home') }}">← 返回游戏</a>
@@ -20,15 +21,11 @@
             <div class="file-row">
                 <label class="file-picker" id="upload-zone">
                     <span class="file-icon" aria-hidden="true"><img src="{{ url_for('static', filename='images/upload-icon.svg') }}" alt=""></span>
-                    <span class="file-details"><span id="file-label">上传反馈文件</span><span class="file-picker-note">点击选择文件，或拖入这里</span></span>
+                    <span class="file-details"><span id="file-label">点击选择文件，或拖入这里</span><span id="file-summary" class="file-picker-note">支持 CSV / Excel（仅读取首个工作表），请包含本期及上周同期数据。</span></span>
                     <span id="change-file" class="change-file" hidden>更换文件</span>
                     <input id="file" type="file" name="file" accept=".csv,.xlsx" required aria-label="选择反馈文件">
                 </label>
                 <button id="upload-button" type="submit" class="secondary compact">上传并预览</button>
-            </div>
-            <div class="upload-meta">
-                <span id="file-summary" class="muted small file-summary">请包含本期及上周同期的完整反馈</span>
-                <p id="upload-note" class="muted small">支持 CSV、.xlsx；Excel 仅读取第一个工作表。上传不会调用 AI。</p>
             </div>
         </form>
         <form id="report-form" hidden>

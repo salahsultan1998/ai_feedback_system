@@ -56,20 +56,25 @@ def detail_rows(folder):
     """Read only the app's export; retain period membership and literal IDs."""
     book = load_workbook(folder / "feedback_details.xlsx", read_only=True, data_only=False)
     try:
-        headers = ["统计期间", *COLUMNS.values()]
-        rows = [headers]
+        current_columns = list(COLUMNS.values())
+        legacy_columns = [name for name in current_columns if name != "是否建议"]
+        headers, rows = None, []
         for title, period in (("本期反馈明细", "本期"), ("上周同期反馈明细", "上周同期")):
             if title not in book.sheetnames:
                 raise ValueError("报告 Excel 缺少预期的明细工作表。")
             sheet = book[title]
             values = list(sheet.iter_rows(min_row=4, values_only=True))
-            if not values or list(values[0]) != list(COLUMNS.values()):
+            actual = list(values[0]) if values else []
+            if actual not in (current_columns, legacy_columns) or (headers is not None and actual != headers):
                 raise ValueError("报告 Excel 明细字段不匹配，无法推送。")
+            if headers is None:
+                headers = actual
+                rows.append(["统计期间", *headers])
             for record in values[1:]:
                 if all(value is None for value in record):
                     continue
                 converted = []
-                for label, value in zip(COLUMNS.values(), record):
+                for label, value in zip(headers, record):
                     if value is None:
                         value = ""
                     if label == "反馈时间" and isinstance(value, (datetime, date)):

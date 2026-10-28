@@ -102,6 +102,9 @@ function boot() {
     assert.equal(get("downloads").hidden,true);
     get("report-tab").listeners.click();
     assert.equal(get("downloads").hidden,false);
+    await vm.runInContext('displayJob({status:"complete",message:"完成",done:4,total:4,result:{total:1,previous_total:2,selection:{periods:{current:{start:"2026-10-19",end:"2026-10-22"}},processed_count:4,selected_count:3,semantic_excluded_in_period:1}}})', context);
+    assert.equal(get("period-counts").textContent,"本期有效 1 条 · 上周同期有效 2 条");
+    assert(get("selection-note").textContent.includes("另排除 1 条"));
     get("end").value = "2026-10-23";
     await get("end").listeners.change();
     assert.equal(get("generate-button").disabled,false);

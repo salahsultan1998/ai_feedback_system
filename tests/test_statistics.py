@@ -13,6 +13,7 @@ class StatisticsTests(BaseTest):
         selected, info = select_feedback(self.raw,cleaned,"2026-10-19","2026-10-22",self.config)
         selected["最终标签"] = ["账号问题","账号问题","游戏卡顿","游戏卡顿"]
         selected["具体主题"] = ""
+        selected["是否有效"], selected["是否建议"], selected["排除原因"] = "是", "否", ""
         self.config["report"]["anomaly"]["new_module_min_count"] = 2
         snapshot = build_statistics(selected,info,self.config)
         modules = {item["label"]:item for item in snapshot["modules"]}

@@ -49,6 +49,10 @@ def load_config(code, root=ROOT):
     labels = config["schema"].get("labels")
     if not labels or any(not isinstance(v.get("themes"), list) for v in labels.values()):
         raise ValueError("游戏分类配置无效。")
+    reasons = config["schema"].get("exclusion_reasons")
+    if reasons is not None and (not isinstance(reasons, list) or not reasons or
+            any(not isinstance(reason, str) or not reason.strip() for reason in reasons) or len(set(reasons)) != len(reasons)):
+        raise ValueError("语义排除原因必须为不重复的非空字符串列表。")
     for name in ("classification", "suggestions", "issues"):
         prompt = (folder / "prompts" / f"{name}.md").read_text(encoding="utf-8")
         if name == "classification" and "{{LABEL_SCHEMA}}" not in prompt:
@@ -57,4 +61,10 @@ def load_config(code, root=ROOT):
             "{{LABEL_SCHEMA}}", json.dumps(config["schema"], ensure_ascii=False))
         if name in {"suggestions", "issues"}:
             config[name + "_prompt"] += REPORT_LANGUAGE_INSTRUCTIONS
+            terminology = config["schema"].get("terminology")
+            if terminology:
+                config[name + "_prompt"] += (
+                    "\n游戏术语约定：下列中文键为本游戏使用的称呼，分析和合并时沿用，不自行改名。"
+                    "结合定义保留主体、条件和实际发生状态；未确认的规则不补充推断。\n"
+                    + json.dumps(terminology, ensure_ascii=False))
     return config
