@@ -4,7 +4,10 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 import threading
 
+from openai import APIStatusError
+
 from feedback.cleaning import clean_feedback
+from feedback.ai_client import ModelRequestError
 from feedback.processing import fingerprint, make_batches, process_feedback, validate_batch, validate_result
 from feedback.storage import atomic_csv, read_csv
 from tests.helpers import BaseTest, fake_request
@@ -42,6 +45,31 @@ class ProcessingTests(BaseTest):
     def test_invalid_model_labels_rejected(self):
         with self.assertRaises(ValueError):
             validate_result({"translation_zh":"text","label":"invented","theme":""},self.config)
+
+    def test_global_request_failure_stops_new_batches_and_keeps_checkpoint(self):
+        rows, _ = clean_feedback(self.raw, self.config)
+        config = {**self.config, "classification_batch_size": 1, "concurrency": 2}
+        error = ModelRequestError("模型请求失败（HTTP 401）：密钥无效。", 401, stops_processing=True)
+        with patch("feedback.ai_client.request_json", side_effect=error) as request, self.assertLogs(
+                "feedback.processing", level="WARNING") as logs:
+            with self.assertRaisesRegex(ValueError, "有 8 条反馈.*HTTP 401"):
+                process_feedback(rows, config, self.root / "processed.csv", lambda **v: None)
+        self.assertEqual(request.call_count, 2)
+        saved = read_csv(self.root / "processed.csv")
+        self.assertEqual(len(saved), 8)
+        self.assertEqual(saved["错误"].eq("待处理").sum(), 6)
+        self.assertTrue(all("HTTP 401" in message for message in logs.output))
+
+    def test_403_batch_failure_surfaces_reason_and_does_not_skip_other_batches(self):
+        rows, _ = clean_feedback(self.raw.iloc[:3], self.config)
+        error = ModelRequestError("模型请求失败（HTTP 403）：Provider policy rejected the request.", 403)
+        config = {**self.config, "classification_batch_size": 1, "concurrency": 1}
+        with patch("feedback.ai_client.request_json", side_effect=error) as request, self.assertLogs(
+                "feedback.processing", level="WARNING"):
+            with self.assertRaisesRegex(ValueError, "HTTP 403.*Provider policy"):
+                process_feedback(rows, config, self.root / "processed.csv", lambda **v: None)
+        self.assertEqual(request.call_count, 3)
+        self.assertTrue(read_csv(self.root / "processed.csv")["错误"].str.contains("HTTP 403").all())
 
     def test_stop_preserves_pending_checkpoint(self):
         rows, _ = clean_feedback(self.raw,self.config)
@@ -86,6 +114,24 @@ class ProcessingTests(BaseTest):
         self.assertEqual(submitted, [["000", "001", "002"], ["001", "002"]])
         self.assertEqual(progress, [0, 1, 3])
         self.assertTrue(result["错误"].eq("").all())
+
+    def test_request_rejection_after_partial_success_keeps_latest_failure_reason(self):
+        rows, _ = clean_feedback(self.raw.iloc[:2], self.config)
+        client = MagicMock()
+        answer = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(
+            {"results": [self.model_result("000")]})))])
+        response = SimpleNamespace(status_code=403, headers={}, request=SimpleNamespace())
+        client.chat.completions.create.side_effect = [answer, APIStatusError("Request rejected",
+            response=response, body={"message": "Provider access denied"})]
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-only"}), patch(
+                "feedback.ai_client.OpenAI") as factory, self.assertLogs("feedback.processing", level="WARNING"):
+            factory.return_value.__enter__.return_value = client
+            with self.assertRaisesRegex(ValueError, "HTTP 403.*Provider access denied"):
+                process_feedback(rows, {**self.config, "max_retries": 1, "retry_delay": 0},
+                                 self.root / "processed.csv", lambda **v: None)
+        saved = read_csv(self.root / "processed.csv").set_index("反馈ID")
+        self.assertEqual(saved.loc["000", "错误"], "")
+        self.assertIn("HTTP 403", saved.loc["001", "错误"])
 
     def test_duplicate_numeric_and_unknown_ids_cannot_be_misassigned(self):
         response = {"results": [self.model_result("000"), self.model_result("000"),

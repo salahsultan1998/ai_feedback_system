@@ -70,6 +70,25 @@ class WebTests(BaseTest):
         self.assertIn("OPENROUTER_API_KEY",response.get_json()["error"])
         self.assertIsNone(self.app.extensions["jobs"].active)
 
+    def test_model_rejection_reaches_progress_message_and_server_log(self):
+        base = self.upload()
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-only"}), patch(
+                "feedback.ai_client.request_json", side_effect=ValueError("模型请求失败（HTTP 403）：Access denied")), patch(
+                "feedback.processing.logger.warning"), self.assertLogs(self.app.logger.name, level="WARNING") as logs:
+            response = self.client.post(base + "/reports", json={"start": "2026-10-19", "end": "2026-10-22"}, headers=self.headers)
+            job = base + "/jobs/" + response.get_json()["id"]
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                status = self.client.get(job).get_json()
+                if status["status"] == "failed":
+                    break
+                time.sleep(.02)
+        self.assertEqual(status["status"], "failed", status)
+        self.assertEqual((status["done"], status["total"]), (0, 4))
+        self.assertIn("HTTP 403", status["message"])
+        self.assertIn("Access denied", status["message"])
+        self.assertTrue(any("HTTP 403" in line for line in logs.output))
+
     def test_restart_marks_unfinished_job_interrupted(self):
         base=self.upload()
         run=base.split("/")[-1]

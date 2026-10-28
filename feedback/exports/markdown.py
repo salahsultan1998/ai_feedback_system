@@ -15,7 +15,7 @@ def change(current, previous):
     if not previous:
         return "新增（上周同期为 0）" if current else "持平"
     delta = current - previous
-    return "持平（0.0%）" if not delta else f"{'增加' if delta > 0 else '减少'} {abs(delta):,} 条（{abs(delta / previous):.1%}）"
+    return "=（0.0%）" if not delta else f"{'+' if delta > 0 else '-'} {abs(delta):,} 条（{abs(delta / previous):.1%}）"
 
 
 def render_markdown(snapshot, analysis, config):

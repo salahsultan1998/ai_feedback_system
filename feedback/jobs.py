@@ -65,6 +65,7 @@ class Jobs:
                 except InterruptedError as error:
                     update(status="stopped", message=str(error))
                 except ValueError as error:
+                    self.logger.warning("Report task failed: job=%s reason=%s", job, error)
                     update(status="failed", message=str(error))
                 except Exception:
                     self.logger.exception("Report task failed: %s", job)

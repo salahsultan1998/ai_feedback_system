@@ -2,6 +2,7 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 import json
+import logging
 import threading
 
 import pandas as pd
@@ -13,6 +14,7 @@ RESULT_COLUMNS = {"translation_zh": "中文翻译", "label": "最终标签", "th
                   "is_suggestion": "是否建议", "is_valid": "是否有效", "exclusion_reason": "排除原因"}
 OUTPUT = [*RESULT_COLUMNS.values(), "错误", "处理指纹"]
 EXCLUSION_REASONS = ["缺少明确反馈对象或诉求", "内容无法理解"]
+logger = logging.getLogger(__name__)
 
 BATCH_INSTRUCTIONS = """
 
@@ -135,6 +137,7 @@ def process_feedback(rows, config, path, progress, should_stop=None):
 
     done = len(result) - len(pending)
     lock = threading.Lock()
+    request_blocked = threading.Event()
     indices = {str(result.at[index, "反馈ID"]): index for index in pending}
     items = [{"feedback_id": str(result.at[index, "反馈ID"]),
               "feedback": result.at[index, "用户自己填写的内容"],
@@ -182,8 +185,14 @@ def process_feedback(rows, config, path, progress, should_stop=None):
             return
         except Exception as error:
             message = str(error) if isinstance(error, ValueError) else type(error).__name__
-            record({}, {item["feedback_id"]: errors.get(item["feedback_id"], message)
-                        for item in batch if item["feedback_id"] not in accepted})
+            unresolved = {item["feedback_id"]: (message if isinstance(error, ai_client.ModelRequestError)
+                                               else errors.get(item["feedback_id"], message))
+                          for item in batch if item["feedback_id"] not in accepted}
+            logger.warning("Feedback batch failed: model=%s records=%s reason=%s",
+                           ai_client.model_name(config), len(unresolved), message)
+            if isinstance(error, ai_client.ModelRequestError) and error.stops_processing:
+                request_blocked.set()
+            record({}, unresolved)
 
     save()
     progress(stage="processing", message="正在批量翻译与分类", done=done, total=len(result))
@@ -194,8 +203,12 @@ def process_feedback(rows, config, path, progress, should_stop=None):
             futures = [pool.submit(process_batch, batch) for batch in batches[offset:offset + size]]
             for future in as_completed(futures):
                 future.result()
+            if request_blocked.is_set():
+                break
     ai_client.check_stop(should_stop)
     failed = int(result["错误"].ne("").sum())
     if failed:
-        raise ValueError(f"有 {failed} 条反馈尚未处理成功，未生成报告。已完成的结果已保存，请重试。")
+        reasons = result.loc[~result["错误"].isin(["", "待处理"]), "错误"].value_counts().head(2).index
+        detail = " 失败原因：" + "；".join(reasons) if len(reasons) else ""
+        raise ValueError(f"有 {failed} 条反馈尚未处理成功，未生成报告。{detail} 已完成的结果已保存，请修正问题后重试。")
     return result
