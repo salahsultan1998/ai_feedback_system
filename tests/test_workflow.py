@@ -1,3 +1,4 @@
+from copy import deepcopy
 from unittest.mock import patch
 from openpyxl import load_workbook
 from feedback.workflow import run_report
@@ -6,6 +7,31 @@ from tests.helpers import BaseTest, fake_request
 
 
 class WorkflowTests(BaseTest):
+    def test_changing_growth_threshold_reuses_classification_and_only_adds_required_analysis(self):
+        first = deepcopy(self.config)
+        first["report"]["module_growth_thresholds"]["玩法相关"] = 2
+
+        def request(prompt, payload, config, validate, should_stop=None):
+            if "feedbacks" not in payload:
+                return fake_request(prompt, payload, config, validate, should_stop)
+            return validate({"results": [{"feedback_id": item["feedback_id"], "translation_zh": "玩家咨询玩法。",
+                "label": "游戏卡顿" if item["feedback_id"] == "002" else "玩法相关",
+                "theme": "" if item["feedback_id"] == "002" else "翻倍场", "subtheme": "",
+                "is_valid": True, "exclusion_reason": ""} for item in payload["feedbacks"]]})
+
+        with patch("feedback.ai_client.request_json", side_effect=request) as model:
+            before = run_report(self.root, first, "2026-10-19", "2026-10-22", False, "high-threshold", lambda **v: None)
+            self.assertEqual(model.call_count, 1)
+            lowered = deepcopy(first)
+            lowered["report"]["module_growth_thresholds"]["玩法相关"] = .1
+            after = run_report(self.root, lowered, "2026-10-19", "2026-10-22", False, "low-threshold", lambda **v: None)
+            self.assertEqual(sum("feedbacks" in call.args[1] for call in model.call_args_list), 1)
+            self.assertEqual(sum("items" in call.args[1] for call in model.call_args_list), 1)
+            count = model.call_count
+            run_report(self.root, lowered, "2026-10-19", "2026-10-22", False, "same-threshold", lambda **v: None)
+            self.assertEqual(model.call_count, count)
+        self.assertEqual((before["total"], before["previous_total"]), (after["total"], after["previous_total"]))
+
     def test_whole_workflow_selects_four_rows_and_exports_two_sheets(self):
         with patch("feedback.ai_client.request_json",side_effect=fake_request) as request:
             result = run_report(self.root,self.config,"2026-10-19","2026-10-22",False,"first",lambda **v:None)

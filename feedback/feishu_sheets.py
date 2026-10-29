@@ -19,6 +19,7 @@ DATE_FORMATTER = "yyyy/MM/dd HH:mm:ss"
 # Preserve old layouts so existing push checkpoints remain resumable.
 PREVIOUS_DETAIL_COLUMNS = ["反馈模块", "反馈系统", "反馈ID", "用户ID", "VIP等级", "反馈时间",
                            "中文翻译", "原文", "原标签", "用户主动选择的标签", "附加信息", "是否建议"]
+PREVIOUS_COMPACT_COLUMNS = PREVIOUS_DETAIL_COLUMNS[:8] + PREVIOUS_DETAIL_COLUMNS[-2:]
 
 
 def settings_for(config):
@@ -60,7 +61,10 @@ def detail_rows(folder):
     book = load_workbook(folder / "feedback_details.xlsx", read_only=True, data_only=False)
     try:
         current_columns = list(COLUMNS.values())
+        previous_category_columns = [*current_columns, "是否建议"]
         legacy_columns = PREVIOUS_DETAIL_COLUMNS[:-1]
+        allowed_columns = (current_columns, previous_category_columns, PREVIOUS_COMPACT_COLUMNS,
+                           PREVIOUS_DETAIL_COLUMNS, legacy_columns)
         headers, rows = None, []
         for title, period in (("本期反馈明细", "本期"), ("上周同期反馈明细", "上周同期")):
             if title not in book.sheetnames:
@@ -68,7 +72,7 @@ def detail_rows(folder):
             sheet = book[title]
             values = list(sheet.iter_rows(min_row=4, values_only=True))
             actual = list(values[0]) if values else []
-            if actual not in (current_columns, PREVIOUS_DETAIL_COLUMNS, legacy_columns) or (headers is not None and actual != headers):
+            if actual not in allowed_columns or (headers is not None and actual != headers):
                 raise ValueError("报告 Excel 明细字段不匹配，无法推送。")
             if headers is None:
                 headers = actual

@@ -10,8 +10,9 @@ import pandas as pd
 from . import ai_client
 from .policies import ABUSE_REASON, is_suggestion_label
 from .storage import atomic_csv, read_csv
+from .taxonomy import validate_path
 
-RESULT_COLUMNS = {"translation_zh": "中文翻译", "label": "最终标签", "theme": "具体主题",
+RESULT_COLUMNS = {"translation_zh": "中文翻译", "label": "最终标签", "theme": "具体主题", "subtheme": "三级主题",
                   "is_suggestion": "是否建议", "is_valid": "是否有效", "exclusion_reason": "排除原因"}
 OUTPUT = [*RESULT_COLUMNS.values(), "错误", "处理指纹"]
 EXCLUSION_REASONS = ["缺少明确反馈对象或诉求", "内容无法理解", ABUSE_REASON]
@@ -24,34 +25,33 @@ BATCH_INSTRUCTIONS = """
 请独立处理每条反馈，不要把其他反馈的事实、诉求或账号混入当前条目。
 每项结果必须原样保留 feedback_id 字符串（包括前导零），不能漏项、重复、改写 ID 或输出未提供的 ID。
 结果可以乱序，但每条输入都必须有且只有一个对应结果。
-先检查每条原文是否含实际辱骂内容：只要包含，无论是否有有价值的建议或实质问题，整条返回 is_valid=false、exclusion_reason="含辱骂内容"、label=""、theme=""。
+先检查每条原文是否含实际辱骂内容：只要包含，无论是否有有价值的建议或实质问题，整条返回 is_valid=false、exclusion_reason="含辱骂内容"、label=""、theme=""、subtheme=""。
 其余反馈独立判断 is_valid，必须是布尔值，不能返回字符串或数字。
-有效反馈必须有合法模块，exclusion_reason 为空；无效反馈的 label、theme 为空。
+label 为 I 类别，theme 为 II 类别，subtheme 为 theme.children 中的 III 类别；没有第三层时 subtheme=""。不得将括号展示文字写进 theme。
+有效反馈必须有合法分类路径，exclusion_reason 为空；无效反馈的 label、theme、subtheme 全部为空。
 不要判断或返回 is_suggestion，“是否建议”由后台按原标签确定，建议价值将在后续提炼阶段筛选。
 无效原因从分类表 exclusion_reasons 选择；未配置时仅可用“缺少明确反馈对象或诉求”“内容无法理解”或“含辱骂内容”。
 只返回以下 JSON 对象，不要 Markdown 或其他文字：
-{"results":[{"feedback_id":"原样的字符串 ID","translation_zh":"简体中文翻译","label":"主模块或空字符串","theme":"固定主题或空字符串","is_valid":true,"exclusion_reason":""}]}
+{"results":[{"feedback_id":"原样的字符串 ID","translation_zh":"简体中文翻译","label":"I 类别或空字符串","theme":"II 类别或空字符串","subtheme":"III 类别或空字符串","is_valid":true,"exclusion_reason":""}]}
 """
 
 
 def validate_result(result, config, original_label=""):
-    if not isinstance(result, dict) or any(not isinstance(result.get(k), str) for k in ("translation_zh", "label", "theme", "exclusion_reason")):
-        raise ValueError("模型必须返回翻译、主模块、主题和排除原因字符串。")
+    if not isinstance(result, dict) or any(not isinstance(result.get(k), str) for k in ("translation_zh", "label", "theme", "subtheme", "exclusion_reason")):
+        raise ValueError("模型必须返回翻译、三层分类和排除原因字符串。")
     if type(result.get("is_valid")) is not bool:
         raise ValueError("是否有效必须为布尔值。")
-    translation, label, theme = (result[k].strip() for k in ("translation_zh", "label", "theme"))
+    translation, label, theme, subtheme = (result[k].strip() for k in ("translation_zh", "label", "theme", "subtheme"))
     reason = result["exclusion_reason"].strip()
     if not translation:
         raise ValueError("模型翻译为空。")
-    labels = config["schema"]["labels"]
     if result["is_valid"]:
-        if label not in labels or label == "辱骂" or reason:
-            raise ValueError("有效反馈的模块必须合法，排除原因必须为空。")
-        if theme and theme not in [item["name"] for item in labels[label]["themes"]]:
-            raise ValueError("模型子标签不属于所选主模块。")
-    elif label or theme or reason not in config["schema"].get("exclusion_reasons", EXCLUSION_REASONS):
-        raise ValueError("无效反馈须有合法排除原因，模块和主题为空。")
-    return {"translation_zh": translation, "label": label, "theme": theme,
+        validate_path(label, theme, subtheme, config["schema"])
+        if reason:
+            raise ValueError("有效反馈的排除原因必须为空。")
+    elif label or theme or subtheme or reason not in config["schema"].get("exclusion_reasons", EXCLUSION_REASONS):
+        raise ValueError("无效反馈须有合法排除原因，三层分类必须全部为空。")
+    return {"translation_zh": translation, "label": label, "theme": theme, "subtheme": subtheme,
             "is_suggestion": result["is_valid"] and is_suggestion_label(original_label, config),
             "is_valid": result["is_valid"], "exclusion_reason": reason}
 
@@ -69,7 +69,7 @@ def cached_result(row, config):
 
 
 def fingerprint(row, config):
-    content = ["source-suggestions-no-abuse-v3", config["game"], ai_client.model_name(config), config["classification_prompt"], BATCH_INSTRUCTIONS,
+    content = ["three-level-source-suggestions-no-abuse-v4", config["game"], ai_client.model_name(config), config["classification_prompt"], BATCH_INSTRUCTIONS,
                config.get("suggestion_labels", ["建议"]),
                str(row["反馈ID"]), str(row["用户自己填写的内容"]), str(row["反馈标签"])]
     return hashlib.sha256(json.dumps(content, ensure_ascii=False).encode()).hexdigest()

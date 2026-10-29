@@ -2,6 +2,7 @@
 from .cleaning import parse_dates
 from .selection import period_mask
 from .policies import abuse_mask, suggestion_mask
+from .taxonomy import validate_path
 
 
 def change_rate(current, previous):
@@ -15,6 +16,10 @@ def build_statistics(processed, selection, config):
     dates = parse_dates(processed["反馈时间"])
     abusive = abuse_mask(processed)
     valid = processed["是否有效"].eq("是") & ~abusive
+    for row in processed.loc[valid].to_dict("records"):
+        if not isinstance(row.get("三级主题"), str):
+            raise ValueError("处理结果缺少三级分类，请按新规则重新生成。")
+        validate_path(row["最终标签"], row["具体主题"], row["三级主题"], config["schema"])
     semantic_excluded = ~valid & ~abusive
     processed["是否建议"] = (valid & suggestion_mask(processed, config)).map({True: "是", False: "否"})
     current_mask = period_mask(dates, selection["periods"]["current"])
@@ -34,20 +39,20 @@ def build_statistics(processed, selection, config):
         "source_excluded_in_period": selection.get("excluded_in_period", 0),
         "excluded_in_period": selection.get("excluded_in_period", 0) + int((~valid).sum())}
     counts, old_counts = current["最终标签"].value_counts(), previous["最终标签"].value_counts()
-    rules = config["report"]["anomaly"]
+    thresholds = config["report"]["module_growth_thresholds"]
     modules = []
     for label in config["schema"]["labels"]:
         count, old = int(counts.get(label, 0)), int(old_counts.get(label, 0))
         if not count and not old:
             continue
         rate = change_rate(count, old)
-        flagged = ((not old and count >= rules["new_module_min_count"]) or
-                   (old > 0 and count >= rules["min_count"] and count - old >= rules["min_increase"]
-                    and rate >= rules["min_growth_rate"]))
+        threshold = thresholds[label]
+        # A zero baseline has no percentage: any current feedback is new.
+        flagged = count > 0 and (old == 0 or rate >= threshold)
         suggestion_count = int((current["最终标签"].eq(label) & current["是否建议"].eq("是")).sum())
         modules.append(dict(label=label, count=count, previous=old, share=count / len(current) if len(current) else 0,
                             suggestion_count=suggestion_count,
-                            delta=count-old, rate=rate, flagged=bool(flagged)))
+                            delta=count-old, rate=rate, growth_threshold=threshold, flagged=bool(flagged)))
     modules.sort(key=lambda item: -item["count"])
     return {"current": current, "previous": previous, "excluded": excluded, "modules": modules, "selection": selection,
             "suggestion_feedback_count": int(current["是否建议"].eq("是").sum()),

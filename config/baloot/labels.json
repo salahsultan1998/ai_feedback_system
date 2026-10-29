@@ -1,10 +1,20 @@
 {
   "game": "Baloot",
   "label_system_name": "Baloot反馈标签",
-  "exclusion_reasons": ["缺少明确反馈对象或诉求", "内容无法理解", "含辱骂内容"],
+  "exclusion_reasons": [
+    "缺少明确反馈对象或诉求",
+    "内容无法理解",
+    "含辱骂内容"
+  ],
   "terminology": {
     "对局规则举报": {
-      "ar_variants": ["قيد", "تقييد", "التقييد", "يقيد", "يقييد"],
+      "ar_variants": [
+        "قيد",
+        "تقييد",
+        "التقييد",
+        "يقيد",
+        "يقييد"
+      ],
       "definition": "在打牌过程中，玩家认为他人未按规则出牌时，可以主动发起规则举报，由系统判断；举报成立后，被举报方才受到处罚。随意发起举报可能干扰对手和队友。",
       "translation_notes": [
         "在牌局规则语境中可用说明性中文“对局规则举报”，该含义已经业务确认。",
@@ -14,7 +24,9 @@
       ]
     },
     "打光头": {
-      "ar_variants": ["كبوت"],
+      "ar_variants": [
+        "كبوت"
+      ],
       "definition": "使对方在牌局中得零分，即业务确认的全胜结果。团队固定中文称呼为“打光头”。",
       "translation_notes": [
         "统一使用“打光头”，不再将该术语译为“全墩”。",
@@ -23,30 +35,48 @@
       ]
     },
     "project": {
-      "ar_variants": ["مشروع", "مشاريع"],
+      "ar_variants": [
+        "مشروع",
+        "مشاريع"
+      ],
       "definition": "在牌局或欢乐场的项目语境中，团队允许使用英文 project。project 400 保留数字 400，不擅自补充金币、价格或其他单位。",
-      "translation_notes": ["只有上下文支持时才按游戏术语翻译，不能把所有包含该词的内容都认定为欢乐场。"]
+      "translation_notes": [
+        "只有上下文支持时才按游戏术语翻译，不能把所有包含该词的内容都认定为欢乐场。"
+      ]
     },
     "欢乐场": {
-      "ar_variants": ["تحدي المشاريع"],
+      "ar_variants": [
+        "تحدي المشاريع"
+      ],
       "definition": "业务确认的玩法名称，中文统一为欢乐场。"
     },
     "许愿树": {
-      "ar_variants": ["شجرة الامنيات", "شجرة الأمنيات"],
+      "ar_variants": [
+        "شجرة الامنيات",
+        "شجرة الأمنيات"
+      ],
       "definition": "业务确认的活动名称，中文统一为许愿树。付费后未收到商品的反馈按充值主诉求分类。"
     },
     "沙漠寻宝": {
-      "ar_variants": ["كنز الصحراء","خريطة"],
+      "ar_variants": [
+        "كنز الصحراء",
+        "خريطة"
+      ],
       "definition": "业务确认的样例中，玩家所说的地图活动是沙漠寻宝。仅在对应活动语境采用，不能把任意地图相关文字都替换为该活动名。"
     }
   },
   "labels": {
     "账号问题": {
       "themes": [
-        {"name":"账号丢失"},
-        {"name":"账号绑定相关"},
-        {"name":"无法登录"}
-
+        {
+          "name": "账号丢失"
+        },
+        {
+          "name": "账号绑定相关"
+        },
+        {
+          "name": "无法登录"
+        }
       ]
     },
     "游戏卡顿": {
@@ -54,93 +84,293 @@
     },
     "玩法相关": {
       "themes": [
-        { "name": "翻倍场", "translations": { "ar": "صكه" } },
-        { "name": "房卡场", "translations": { "ar": "جلسات" } },
-        { "name": "天梯赛", "translations": { "ar": "سلم التحدي" } },
-        { "name": "52分翻倍场", "translations": { "ar": "صكه سريعة" } },
-        { "name": "免费赢奖", "translations": { "ar": "اربح مجانا" } },
-        { "name": "百万奖金赛", "translations": { "ar": "دوري المحترفين" } },
-        { "name": "单局模式", "translations": { "ar": "جولة واحدة" } },
-        { "name": "盲盒场", "translations": { "ar": "ساحة الصندوق" } },
-        { "name": "欢乐游戏", "translations": { "ar": "ألعاب الحظ" } },
-        { "name": "欢乐场", "translations": { "ar": "تحدي المشاريع أو مسابقة التجديف" } },
-        { "name": "幸运转盘", "translations": { "ar": "عجلة الحظ أو البحث عن الكنز" } },
-        { "name": "攻城略地", "translations": { "ar": "غزو المدن" } },
-        { "name": "绿洲狙击", "translations": { "ar": "قناص الواحة" } },
-        { "name": "射箭", "translations": { "ar": "تحدي الرماية" } },
-        { "name": "点球", "translations": { "ar": "ضربة جزاء" } },
-        { "name": "大富翁", "translations": { "ar": "مليونير بنك الحظ" } },
-        { "name": "打企鹅", "translations": { "ar": "البطريق الطائر" } },
-        { "name": "捕鱼", "translations": { "ar": "خبير الصيد" } }
+        {
+          "name": "翻倍场",
+          "translations": {
+            "ar": "صكه"
+          }
+        },
+        {
+          "name": "房卡场",
+          "translations": {
+            "ar": "جلسات"
+          }
+        },
+        {
+          "name": "天梯赛",
+          "translations": {
+            "ar": "سلم التحدي"
+          }
+        },
+        {
+          "name": "52分翻倍场",
+          "translations": {
+            "ar": "صكه سريعة"
+          }
+        },
+        {
+          "name": "免费赢奖",
+          "translations": {
+            "ar": "اربح مجانا"
+          }
+        },
+        {
+          "name": "百万奖金赛",
+          "translations": {
+            "ar": "دوري المحترفين"
+          }
+        },
+        {
+          "name": "单局模式",
+          "translations": {
+            "ar": "جولة واحدة"
+          }
+        },
+        {
+          "name": "盲盒场",
+          "translations": {
+            "ar": "ساحة الصندوق"
+          }
+        },
+        {
+          "name": "欢乐游戏",
+          "translations": {
+            "ar": "ألعاب الحظ"
+          }
+        },
+        {
+          "name": "欢乐场",
+          "translations": {
+            "ar": "تحدي المشاريع أو مسابقة التجديف"
+          }
+        },
+        {
+          "name": "幸运转盘",
+          "translations": {
+            "ar": "عجلة الحظ أو البحث عن الكنز"
+          }
+        },
+        {
+          "name": "攻城略地",
+          "translations": {
+            "ar": "غزو المدن"
+          }
+        },
+        {
+          "name": "绿洲狙击",
+          "translations": {
+            "ar": "قناص الواحة"
+          }
+        },
+        {
+          "name": "射箭",
+          "translations": {
+            "ar": "تحدي الرماية"
+          }
+        },
+        {
+          "name": "点球",
+          "translations": {
+            "ar": "ضربة جزاء"
+          }
+        },
+        {
+          "name": "大富翁",
+          "translations": {
+            "ar": "مليونير بنك الحظ"
+          }
+        },
+        {
+          "name": "打企鹅",
+          "translations": {
+            "ar": "البطريق الطائر"
+          }
+        },
+        {
+          "name": "捕鱼",
+          "translations": {
+            "ar": "خبير الصيد"
+          }
+        },
+        {
+          "name": "活动",
+          "children": [
+            {
+              "name": "无尽礼包",
+              "translations": {
+                "ar": "هدايا لا متناهية"
+              }
+            },
+            {
+              "name": "存钱袋",
+              "translations": {
+                "ar": "صرة الذهب"
+              }
+            },
+            {
+              "name": "幸运翻倍",
+              "translations": {
+                "ar": "حظك اليوم"
+              }
+            },
+            {
+              "name": "周末礼包",
+              "translations": {
+                "ar": "باقة نهاية الأسبوع"
+              }
+            },
+            {
+              "name": "许愿树",
+              "translations": {
+                "ar": "شجرة الامنيات"
+              }
+            },
+            {
+              "name": "沙漠寻宝",
+              "translations": {
+                "ar": "حدث الخرائط"
+              }
+            }
+          ]
+        },
+        {
+          "name": "游戏限制",
+          "children": [
+            {
+              "name": "欢乐场游戏限制",
+              "translations": {
+                "ar": "....."
+              }
+            },
+            {
+              "name": "大企鹅游戏限制",
+              "translations": {
+                "ar": "....."
+              }
+            },
+            {
+              "name": "攻城略地游戏限制",
+              "translations": {
+                "ar": "....."
+              }
+            },
+            {
+              "name": "点赞金币限制",
+              "translations": {
+                "ar": "عدم إمكانية إرسال الذهب "
+              }
+            },
+            {
+              "name": "其他玩法限制"
+            }
+          ]
+        },
+        {
+          "name": "发牌&公平",
+          "children": [
+            {
+              "name": "发牌不公平",
+              "translations": {
+                "ar": "....."
+              }
+            },
+            {
+              "name": "输多赢少",
+              "translations": {
+                "ar": "....."
+              }
+            }
+          ]
+        },
+        {
+          "name": "段位与赛季",
+          "children": [
+            {
+              "name": "赛季结算&赛季奖励"
+            }
+          ]
+        },
+        {
+          "name": "俱乐部"
+        }
       ]
     },
     "充值": {
       "themes": [
-        { "name": "VIP无法充值", "translations": { "ar": "....." } },
-        { "name": "充值未到账", "translations": { "ar": "....." } },
-        {"name":"兑换充值卡"}
-      ]
-    },
-    "俱乐部": {
-      "themes": []
-    },
-    "游戏限制": {
-      "themes": [
-        { "name": "欢乐场游戏限制", "translations": { "ar": "....." } },
-        { "name": "大企鹅游戏限制", "translations": { "ar": "....." } },
-        { "name": "攻城略地游戏限制", "translations": { "ar": "....." } },
-        { "name": "点赞金币限制", "translations": { "ar": "عدم إمكانية إرسال الذهب " } }
+        {
+          "name": "VIP无法充值",
+          "translations": {
+            "ar": "....."
+          }
+        },
+        {
+          "name": "充值未到账",
+          "translations": {
+            "ar": "....."
+          }
+        },
+        {
+          "name": "兑换充值卡"
+        },
+        {
+          "name": "其他充值问题"
+        }
       ]
     },
     "作弊": {
       "themes": [
-        { "name": "队友坑", "translations": { "ar": "....." } },
-        { "name": "举报AI", "translations": { "ar": "....." } },
-        {"name":"对手通牌"}
+        {
+          "name": "队友坑",
+          "translations": {
+            "ar": "....."
+          }
+        },
+        {
+          "name": "举报AI",
+          "translations": {
+            "ar": "....."
+          }
+        },
+        {
+          "name": "对手通牌"
+        }
       ]
-    },
-    "举报": {
-      "themes": [
-        { "name": "聊天被封禁", "translations": { "ar": "....." } },
-        { "name": "账号被封禁", "translations": { "ar": "....." } }
-      ]
-    },
-    "发牌&公平": {
-      "themes": [
-        { "name": "发牌不公平", "translations": { "ar": "....." } },
-        { "name": "输多赢少", "translations": { "ar": "....." } }
-      ]
-    },
-    "段位与赛季": {
-      "themes": [
-        {"name":"赛季结算&赛季奖励"}
-      ]
-    },
-    "活动": {
-      "themes": [
-        { "name": "无尽礼包", "translations": { "ar": "هدايا لا متناهية" } },
-        { "name": "存钱袋", "translations": { "ar": "صرة الذهب" } },
-        { "name": "幸运翻倍", "translations": { "ar": "حظك اليوم" } },
-        { "name": "周末礼包", "translations": { "ar": "باقة نهاية الأسبوع" } },
-        { "name": "许愿树", "translations": { "ar": "شجرة الامنيات" } },
-        { "name": "沙漠寻宝", "translations": { "ar": "حدث الخرائط" } }
-      ]
-    },
-    "个人信息页面": {
-      "themes": [{"name": "战绩记录"}, {"name": "相册"}]
-    },
-    "抱怨": {
-      "themes": []
-    },
-    "金币丢失": {
-      "themes": []
     },
     "其他": {
       "themes": [
-        { "name": "问候感谢", "translations": { "ar": "....." } },
-        { "name": "其他", "translations": { "ar": "....." } },
-        { "name": "要游戏链接", "translations": { "ar": "....." } },
-        { "name": "游戏规则问题", "translations": { "ar": "....." } }
+        {
+          "name": "问候感谢",
+          "translations": {
+            "ar": "....."
+          }
+        },
+        {
+          "name": "要游戏链接",
+          "translations": {
+            "ar": "....."
+          }
+        },
+        {
+          "name": "游戏规则问题",
+          "translations": {
+            "ar": "....."
+          }
+        },
+        {
+          "name": "抱怨"
+        },
+        {
+          "name": "个人信息页面"
+        },
+        {
+          "name": "相册功能"
+        },
+        {
+          "name": "金币丢失"
+        },
+        {
+          "name": "封禁"
+        }
       ]
     }
   }

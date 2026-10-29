@@ -4,6 +4,7 @@ import json
 from .ai_client import cached_request, check_stop
 from .report_language import validate_report_language
 from .policies import abuse_mask, is_suggestion_label, suggestion_mask
+from .taxonomy import display_theme
 
 
 def evidence(item, allowed, config, max_chars, max_ids=None, id_field="feedback_ids"):
@@ -37,7 +38,8 @@ def fragments(rows, config):
     for row in rows.sort_values("反馈ID").to_dict("records"):
         for offset in range(0, len(row["中文翻译"]), size):
             yield {"feedback_id": str(row["反馈ID"]), "label": row["最终标签"],
-                   "theme": row["具体主题"] or "未细分", "is_suggestion": is_suggestion_label(row["反馈标签"], config),
+                   "theme": row["具体主题"] or "未细分", "subtheme": row["三级主题"],
+                   "is_suggestion": is_suggestion_label(row["反馈标签"], config),
                    "text": row["中文翻译"][offset:offset + size]}
 
 
@@ -47,6 +49,8 @@ def analyze_report(snapshot, config, cache_dir, progress, should_stop=None):
     current = snapshot["current"].loc[~abuse_mask(snapshot["current"])]
     suggestion_rows = current.loc[suggestion_mask(current, config)]
     source_labels = suggestion_rows.set_index("反馈ID")["最终标签"].to_dict()
+    source_categories = {row["反馈ID"]: display_theme(row["具体主题"], row["三级主题"]) or "未细分"
+                         for row in suggestion_rows.to_dict("records")}
 
     def ask(name, batch, metadata, suggestions=False):
         check_stop(should_stop)
@@ -66,7 +70,8 @@ def analyze_report(snapshot, config, cache_dir, progress, should_stop=None):
                 labels = {source_labels[fid] for fid in ids}
             if len(labels) != 1:
                 raise ValueError("不同模块的建议不可合并为同一条。")
-            return {"text": item["text"], "label": next(iter(labels)), "feedback_ids": ids}
+            return {"text": item["text"], "label": next(iter(labels)), "feedback_ids": ids,
+                    "categories": sorted({source_categories[fid] for fid in ids})}
 
         def validate(value):
             if not suggestions:
@@ -88,7 +93,7 @@ def analyze_report(snapshot, config, cache_dir, progress, should_stop=None):
         if merging:
             # Source lists can grow large. Compact references let the backend
             # preserve every contributor without sending them through each merge.
-            inputs = [{key: item[key] for key in ("candidate_id", "label", "text")} for item in batch]
+            inputs = [{key: item[key] for key in ("candidate_id", "label", "categories", "text")} for item in batch]
         result = cached_request(name, {**metadata, "items": inputs}, config, cache_dir, validate, should_stop)
         if suggestions:
             return {"suggestions": [suggestion_sources(item) for item in result["suggestions"]]}
@@ -104,7 +109,7 @@ def analyze_report(snapshot, config, cache_dir, progress, should_stop=None):
         meta = {**meta, "stage": "合并"}
         while True:
             candidates = {f"s{index}": item for index, item in enumerate(suggestions)}
-            compact = [{"candidate_id": cid, "label": item["label"], "text": item["text"]}
+            compact = [{"candidate_id": cid, "label": item["label"], "categories": item["categories"], "text": item["text"]}
                        for cid, item in candidates.items()]
             grouped = list(batches(compact, meta, limit))
 
@@ -130,7 +135,7 @@ def analyze_report(snapshot, config, cache_dir, progress, should_stop=None):
     # Do not rely on the model to remove literally identical final entries.
     unique = {}
     for item in suggestions:
-        key = (item["label"], item["text"])
+        key = (item["label"], tuple(item["categories"]), item["text"])
         if key not in unique:
             unique[key] = {**item, "feedback_ids": list(item["feedback_ids"])}
         else:
@@ -143,10 +148,11 @@ def analyze_report(snapshot, config, cache_dir, progress, should_stop=None):
             continue
         progress(stage="analysis", message=f"正在分析：{module['label']}", done=0, total=0)
         rows = current.loc[current["最终标签"].eq(module["label"])].copy()
-        rows["具体主题"] = rows["具体主题"].replace("", "未细分")
+        rows["分析主题"] = [display_theme(theme, subtheme) or "未细分"
+                            for theme, subtheme in zip(rows["具体主题"], rows["三级主题"])]
         issues[module["label"]] = []
-        for theme in rows["具体主题"].value_counts().head(rules["max_issues_per_module"]).index:
-            subset = rows.loc[rows["具体主题"].eq(theme)]
+        for theme in rows["分析主题"].value_counts().head(rules["max_issues_per_module"]).index:
+            subset = rows.loc[rows["分析主题"].eq(theme)]
             items = list(fragments(subset, config))
             meta = {"stage": "反馈", "label": module["label"], "theme": theme, "max_evidence_ids": rules["max_evidence_ids"]}
             while True:

@@ -5,6 +5,30 @@ from feedback.config import load_config, load_settings, read_json
 
 
 class ConfigurationTests(TestCase):
+    def test_module_growth_thresholds_require_all_roots_and_finite_nonnegative_numbers(self):
+        original = load_config("baloot")["report"]["module_growth_thresholds"]
+        invalid = [None, [], "0.1", {key: value for key, value in original.items() if key != "账号问题"},
+                   {**original, "不存在的类别": .1}]
+        invalid += [{**original, "账号问题": value} for value in (-.1, True, "0.1", None, float("nan"), float("inf"))]
+        for thresholds in invalid:
+            def read(path):
+                value = read_json(path)
+                if str(path).endswith("baloot/report_rules.json"):
+                    value["module_growth_thresholds"] = thresholds
+                return value
+            with self.subTest(thresholds=thresholds), patch("feedback.config.read_json", side_effect=read):
+                with self.assertRaisesRegex(ValueError, "增长率"):
+                    load_config("baloot")
+
+    def test_growth_thresholds_can_exceed_one_hundred_percent(self):
+        def read(path):
+            value = read_json(path)
+            if str(path).endswith("baloot/report_rules.json"):
+                value["module_growth_thresholds"]["账号问题"] = 2
+            return value
+        with patch("feedback.config.read_json", side_effect=read):
+            self.assertEqual(load_config("baloot")["report"]["module_growth_thresholds"]["账号问题"], 2)
+
     def test_suggestion_source_labels_must_be_explicit_unique_names(self):
         for labels in ("建议", [], [""], ["建议", "建议"], [" 建议"], [True]):
             def read(path):

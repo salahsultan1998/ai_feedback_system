@@ -14,13 +14,16 @@ class SuggestionGroupingTests(BaseTest):
     def snapshot(self, entries):
         rows = pd.DataFrame([{**self.raw.iloc[0].to_dict(), "反馈时间": "2026-10-20",
             "反馈ID": f"feedback-{index:05d}", "用户ID": f"user-{index:05d}", "反馈标签": "建议",
-            "最终标签": "个人信息页面", "具体主题": "相册", "中文翻译": "建议增加相册功能。",
+            "最终标签": "其他", "具体主题": "相册功能", "三级主题": "", "中文翻译": "建议增加相册功能。",
             "是否有效": "是", "是否建议": "是", "排除原因": "", **entry}
             for index, entry in enumerate(entries)])
-        self.config["report"]["anomaly"]["new_module_min_count"] = 100000
-        return build_statistics(rows, {"periods": {
+        snapshot = build_statistics(rows, {"periods": {
             "current": {"start": "2026-10-19", "end": "2026-10-25"},
             "previous": {"start": "2026-10-12", "end": "2026-10-18"}}}, self.config)
+        # These tests isolate suggestion consolidation from issue analysis.
+        for module in snapshot["modules"]:
+            module["flagged"] = False
+        return snapshot
 
     def test_equivalent_suggestions_merge_with_deduplicated_user_ids_and_reuse_cache(self):
         snapshot = self.snapshot([{"用户ID": "001234"}, {"用户ID": "5434"}, {"用户ID": "001234"}])
@@ -32,7 +35,7 @@ class SuggestionGroupingTests(BaseTest):
                 texts = ["增加相册功能", "添加相册入口", "新增相册"]
                 return validate({"suggestions": [{"text": text, "feedback_ids": [item["feedback_id"]]}
                     for text, item in zip(texts, payload["items"])]})
-            self.assertTrue(all(set(item) == {"candidate_id", "label", "text"} for item in payload["items"]))
+            self.assertTrue(all(set(item) == {"candidate_id", "label", "categories", "text"} for item in payload["items"]))
             return validate({"suggestions": [{"text": "增加相册功能",
                 "candidate_ids": [item["candidate_id"] for item in payload["items"]], "user_ids": ["invented-user"]}]})
 
@@ -53,8 +56,8 @@ class SuggestionGroupingTests(BaseTest):
         self.assertNotIn("5434", json.dumps(payloads))
 
     def test_distinct_requests_in_one_module_and_requests_in_other_modules_stay_separate(self):
-        snapshot = self.snapshot([{}, {"具体主题": "战绩记录", "中文翻译": "建议增加战绩筛选。"},
-                                  {"最终标签": "俱乐部", "具体主题": "", "中文翻译": "建议增加俱乐部排行榜。"}])
+        snapshot = self.snapshot([{}, {"具体主题": "个人信息页面", "中文翻译": "建议增加战绩筛选。"},
+                                  {"最终标签": "玩法相关", "具体主题": "俱乐部", "中文翻译": "建议增加俱乐部排行榜。"}])
 
         def request(prompt, payload, config, validate, should_stop=None):
             if payload["stage"] == "提取":
@@ -66,10 +69,10 @@ class SuggestionGroupingTests(BaseTest):
         with patch("feedback.ai_client.request_json", side_effect=request):
             result = analyze_report(snapshot, self.config, self.root / "cache", lambda **v: None)
         self.assertEqual(len(result["suggestions"]), 3)
-        self.assertEqual(Counter(item["label"] for item in result["suggestions"]), {"个人信息页面": 2, "俱乐部": 1})
+        self.assertEqual(Counter(item["label"] for item in result["suggestions"]), {"其他": 2, "玩法相关": 1})
 
     def test_cross_module_merges_and_unknown_or_duplicate_references_are_rejected(self):
-        snapshot = self.snapshot([{}, {"最终标签": "俱乐部", "具体主题": ""}])
+        snapshot = self.snapshot([{}, {"最终标签": "玩法相关", "具体主题": "俱乐部"}])
         cases = [(["s0", "s1"], "不同模块"), (["unknown"], "未知"), (["s0", "s0"], "重复")]
         for index, (refs, expected) in enumerate(cases):
             def request(prompt, payload, config, validate, should_stop=None):
@@ -89,7 +92,7 @@ class SuggestionGroupingTests(BaseTest):
                 analyze_report(snapshot, self.config, self.root / "invalid-extraction", lambda **v: None)
 
     def test_identical_final_entries_are_deduplicated_within_their_module(self):
-        snapshot = self.snapshot([{}, {}, {"最终标签": "俱乐部", "具体主题": ""}])
+        snapshot = self.snapshot([{}, {}, {"最终标签": "玩法相关", "具体主题": "俱乐部"}])
 
         def request(prompt, payload, config, validate, should_stop=None):
             field = "feedback_ids" if payload["stage"] == "提取" else "candidate_ids"

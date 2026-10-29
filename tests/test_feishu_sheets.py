@@ -80,11 +80,11 @@ class SheetTests(BaseTest):
     def test_merge_fields_periods_ids_dates_and_literal_feedback(self):
         rows = feishu_sheets.detail_rows(self.folder)
         self.assertEqual(len(rows), 5)
-        self.assertEqual(len(rows[0]), 11)
+        self.assertEqual(len(rows[0]), 10)
         self.assertNotIn("原标签", rows[0])
         self.assertNotIn("用户主动选择的标签", rows[0])
-        self.assertEqual(rows[0][-1], "是否建议")
-        self.assertEqual(rows[1][-1], "是")
+        self.assertNotIn("是否建议", rows[0])
+        self.assertEqual(rows[0][-1], "附加信息")
         self.assertEqual([row[0] for row in rows[1:]], ["本期", "本期", "上周同期", "上周同期"])
         self.assertEqual(rows[1][3], "004")
         self.assertEqual(rows[1][4], "0009")
@@ -149,11 +149,26 @@ class SheetTests(BaseTest):
         self.assertEqual(len([1 for _, path, data in self.server.calls
                               if path.endswith("/values") and data["valueRange"]["range"] == f"tab1!A1:{end}2"]), first_batch_calls)
 
+    def restore_suggestion_column(self, book):
+        from openpyxl.worksheet.table import TableColumn
+        for sheet in book:
+            column = sheet.max_column + 1
+            sheet.cell(4, column, "是否建议")
+            for row in range(5, sheet.max_row + 1):
+                sheet.cell(row, column, "是")
+            for table in sheet.tables.values():
+                table.ref = f"A4:{feishu_sheets.get_column_letter(column)}{sheet.max_row}"
+                table.autoFilter.ref = table.ref
+                table.tableColumns.append(TableColumn(id=column, name="是否建议"))
+
     def restore_previous_export_layout(self, with_suggestion):
         from openpyxl import load_workbook
         from openpyxl.worksheet.table import TableColumn
         book = load_workbook(self.folder / "feedback_details.xlsx")
+        self.restore_suggestion_column(book)
         for sheet in book:
+            sheet.cell(4, 1, "反馈模块")
+            sheet.cell(4, 2, "反馈系统")
             sheet.insert_cols(9, 2)
             sheet.cell(4, 9, "原标签")
             sheet.cell(4, 10, "用户主动选择的标签")
@@ -192,6 +207,44 @@ class SheetTests(BaseTest):
         count = len(self.server.calls)
         self.assertEqual(feishu_sheets.sync(self.folder, self.config)["status"], "complete")
         self.assertEqual(len(self.server.calls), count)
+
+    def test_previous_compact_headers_resume_without_rewriting_their_layout(self):
+        from openpyxl import load_workbook
+        book = load_workbook(self.folder / "feedback_details.xlsx")
+        self.restore_suggestion_column(book)
+        for sheet in book:
+            sheet.cell(4, 1, "反馈模块")
+            sheet.cell(4, 2, "反馈系统")
+            for table in sheet.tables.values():
+                table.tableColumns[0].name = "反馈模块"
+                table.tableColumns[1].name = "反馈系统"
+        book.save(self.folder / "feedback_details.xlsx")
+        book.close()
+        self.assertEqual(feishu_sheets.detail_rows(self.folder)[0], ["统计期间", *feishu_sheets.PREVIOUS_COMPACT_COLUMNS])
+        self.server.fail_range = "tab1!A3:K4"
+        with self.assertRaisesRegex(ValueError, "写入请求超时"):
+            feishu_sheets.sync(self.folder, self.config)
+        self.assertEqual(feishu_sheets.sync(self.folder, self.config)["status"], "complete")
+        header_writes = [data for _, path, data in self.server.calls
+                         if path.endswith("/values") and data["valueRange"]["range"] == "tab1!A1:K2"]
+        self.assertEqual(len(header_writes), 1)
+
+    def test_previous_category_headers_with_suggestion_column_can_resume(self):
+        from openpyxl import load_workbook
+        book = load_workbook(self.folder / "feedback_details.xlsx")
+        self.restore_suggestion_column(book)
+        book.save(self.folder / "feedback_details.xlsx")
+        book.close()
+        self.assertEqual(feishu_sheets.detail_rows(self.folder)[0],
+                         ["统计期间", *feishu_sheets.COLUMNS.values(), "是否建议"])
+        self.server.fail_range = "tab1!A3:K4"
+        with self.assertRaisesRegex(ValueError, "写入请求超时"):
+            feishu_sheets.sync(self.folder, self.config)
+        self.assertEqual(feishu_sheets.sync(self.folder, self.config)["status"], "complete")
+        writes = [data for _, path, data in self.server.calls
+                  if path.endswith("/values") and data["valueRange"]["range"] == "tab1!A1:K2"]
+        self.assertEqual(len(writes), 1)
+        self.assertEqual(writes[0]["valueRange"]["values"][0][-1], "是否建议")
 
     def test_date_format_retains_time_and_uses_verified_api_format(self):
         feishu_sheets.sync(self.folder, self.config)

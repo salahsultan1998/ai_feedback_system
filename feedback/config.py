@@ -1,8 +1,10 @@
 """Configuration is read from the repository, never changed by web requests."""
 import json
+import math
 from pathlib import Path
 
 from .report_language import REPORT_LANGUAGE_INSTRUCTIONS
+from .taxonomy import validate_labels
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -49,11 +51,14 @@ def load_config(code, root=ROOT):
     if report["ai_max_input_chars"] < 3000 or any(report[k] < 1 for k in
             ("max_suggestions", "max_issues_per_module", "max_evidence_ids")):
         raise ValueError("报告长度或数量限制无效。")
-    if any(value < 0 for value in report["anomaly"].values()):
-        raise ValueError("趋势阈值不可为负数。")
     labels = config["schema"].get("labels")
-    if not labels or any(not isinstance(v.get("themes"), list) for v in labels.values()):
-        raise ValueError("游戏分类配置无效。")
+    validate_labels(labels)
+    thresholds = report.get("module_growth_thresholds")
+    if not isinstance(thresholds, dict) or set(thresholds) != set(labels):
+        raise ValueError("module_growth_thresholds 必须为每个 I 类别配置增长率，类别名称须与分类表一致。")
+    for label, value in thresholds.items():
+        if type(value) not in (int, float) or not math.isfinite(value) or value < 0:
+            raise ValueError(f"I 类别「{label}」的增长率阈值必须为非负有限数字，0.1 表示 10%。")
     reasons = config["schema"].get("exclusion_reasons")
     if reasons is not None and (not isinstance(reasons, list) or not reasons or
             any(not isinstance(reason, str) or not reason.strip() for reason in reasons) or len(set(reasons)) != len(reasons)):

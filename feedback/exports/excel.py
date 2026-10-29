@@ -9,11 +9,11 @@ from openpyxl.worksheet.table import Table, TableStyleInfo
 from openpyxl.utils import get_column_letter
 
 from ..policies import abuse_mask
+from ..taxonomy import display_theme
 
-COLUMNS = {"最终标签": "反馈模块", "具体主题": "反馈系统", "反馈ID": "反馈ID", "用户ID": "用户ID",
+COLUMNS = {"最终标签": "I 类别", "具体主题": "II 类别", "反馈ID": "反馈ID", "用户ID": "用户ID",
            "VIP等级": "VIP等级", "反馈时间": "反馈时间", "中文翻译": "中文翻译",
-           "用户自己填写的内容": "原文", "附加信息": "附加信息",
-           "是否建议": "是否建议"}
+           "用户自己填写的内容": "原文", "附加信息": "附加信息"}
 EXCLUDED_COLUMNS = {"反馈ID": "反馈ID", "用户ID": "用户ID", "反馈时间": "反馈时间", "中文翻译": "中文翻译",
                     "用户自己填写的内容": "原文", "排除原因": "排除原因"}
 
@@ -26,7 +26,7 @@ def write_excel(snapshot, config, path):
         groups.append(("excluded", "排除反馈明细"))
     for key, title in groups:
         columns = EXCLUDED_COLUMNS if key == "excluded" else COLUMNS
-        rows = snapshot[key].loc[~abuse_mask(snapshot[key])].sort_values(["最终标签", "具体主题", "反馈时间", "反馈ID"])
+        rows = snapshot[key].loc[~abuse_mask(snapshot[key])].sort_values(["最终标签", "具体主题", "三级主题", "反馈时间", "反馈ID"])
         if key == "excluded" and rows.empty:
             continue
         sheet = book.create_sheet(title)
@@ -37,7 +37,7 @@ def write_excel(snapshot, config, path):
         sheet["A2"] = (f"本期及上周同期 · {len(rows)} 条语义排除反馈，不计入统计" if key == "excluded" else
                        f"{period['start']} 至 {period['end']}（含首尾日期） · {len(rows)} 条")
         sheet["A2"].font = Font(size=11, color="64748B")
-        widths = [20, 20, 24, 64, 64, 40] if key == "excluded" else [20, 24, 20, 20, 12, 24, 64, 64, 40, 12]
+        widths = [20, 20, 24, 64, 64, 40] if key == "excluded" else [20, 24, 20, 20, 12, 24, 64, 64, 40]
         for column, (name, width) in enumerate(zip(columns.values(), widths), 1):
             sheet.column_dimensions[get_column_letter(column)].width = width
             cell = sheet.cell(4, column, name)
@@ -49,6 +49,8 @@ def write_excel(snapshot, config, path):
             lines = 1
             for column, name in enumerate(columns, 1):
                 value = row.get(name, "")
+                if name == "具体主题":
+                    value = display_theme(value, row["三级主题"])
                 if name == "反馈时间":
                     value = pd.Timestamp(value).to_pydatetime()
                 if isinstance(value, str) and len(value) > 32767:

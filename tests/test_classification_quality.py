@@ -15,7 +15,7 @@ from tests.helpers import BaseTest, fake_request
 
 
 def answer(**changes):
-    return {"translation_zh": "玩家反馈内容。", "label": "俱乐部", "theme": "",
+    return {"translation_zh": "玩家反馈内容。", "label": "玩法相关", "theme": "", "subtheme": "",
             "is_valid": True, "exclusion_reason": "", **changes}
 
 
@@ -26,13 +26,13 @@ class ClassificationQualityTests(BaseTest):
 
     def processed(self, start="2026-10-19", end="2026-10-22"):
         selected, info = self.selected(start, end)
-        selected["最终标签"], selected["具体主题"], selected["中文翻译"] = "俱乐部", "", "玩家反馈俱乐部问题。"
+        selected["最终标签"], selected["具体主题"], selected["三级主题"], selected["中文翻译"] = "玩法相关", "俱乐部", "", "玩家反馈俱乐部问题。"
         selected["是否有效"], selected["是否建议"], selected["排除原因"] = "是", "否", ""
         return selected, info
 
     def test_suggestion_comes_from_source_label_and_cannot_be_a_module_or_theme(self):
-        for label, theme in [("俱乐部", ""), ("玩法相关", "欢乐场"), ("其他", ""),
-                             ("个人信息页面", "相册"), ("充值", ""), ("活动", "沙漠寻宝")]:
+        for label, theme in [("玩法相关", "俱乐部"), ("玩法相关", "欢乐场"), ("其他", ""),
+                             ("其他", "相册功能"), ("充值", ""), ("玩法相关", "活动")]:
             for suggested in (True, False):
                 with self.subTest(label=label, suggested=suggested):
                     result = validate_result(answer(label=label, theme=theme, is_suggestion=not suggested),
@@ -84,12 +84,14 @@ class ClassificationQualityTests(BaseTest):
 
     def test_suggestion_extraction_uses_only_source_tagged_records_across_modules(self):
         rows, info = self.processed()
-        rows.loc[rows["反馈ID"].eq("004"), ["最终标签", "是否建议"]] = ["其他", "是"]
+        rows.loc[rows["反馈ID"].eq("004"), ["最终标签", "具体主题", "是否建议"]] = ["其他", "", "是"]
         rows.loc[rows["反馈ID"].eq("004"), "反馈标签"] = "建议"
-        rows.loc[rows["反馈ID"].eq("005"), "最终标签"] = "个人信息页面"
+        rows.loc[rows["反馈ID"].eq("005"), ["最终标签", "具体主题"]] = ["其他", "个人信息页面"]
         snapshot = build_statistics(rows, info, self.config)
         # A stale/model-supplied flag must not move a record into or out of the pool.
         snapshot["current"].loc[:, "是否建议"] = ["否", "是"]
+        for module in snapshot["modules"]:
+            module["flagged"] = False  # Isolate the suggestion-pool check from issue analysis.
         payloads = []
         def request(name, payload, config, cache, validate, should_stop=None):
             self.assertEqual(name, "suggestions")
@@ -122,13 +124,14 @@ class ClassificationQualityTests(BaseTest):
         book = load_workbook(folder / "feedback_details.xlsx")
         try:
             self.assertEqual(book.sheetnames, ["本期反馈明细", "上周同期反馈明细", "排除反馈明细"])
-            self.assertEqual(book["本期反馈明细"]["J4"].value, "是否建议")
+            self.assertEqual(book["本期反馈明细"].max_column, 9)
             for sheet in book:
                 headers = [cell.value for cell in sheet[4]]
                 self.assertNotIn("原标签", headers)
                 self.assertNotIn("用户主动选择的标签", headers)
+                self.assertNotIn("是否建议", headers)
             self.assertEqual(book["本期反馈明细"].column_dimensions["I"].width, 40)
-            self.assertEqual(book["本期反馈明细"]["J5"].value, "否")
+            self.assertEqual(stored.loc["005", "是否建议"], "否")
             self.assertEqual(book["排除反馈明细"]["A5"].value, "004")
             self.assertEqual(book["排除反馈明细"]["E5"].value, "=1+1")
             self.assertEqual(book["排除反馈明细"]["E5"].data_type, "s")
@@ -163,7 +166,7 @@ class ClassificationQualityTests(BaseTest):
         rows, _ = self.selected()
         rows["反馈标签"] = "建议"
         cached = rows.copy()
-        cached["中文翻译"], cached["最终标签"], cached["具体主题"], cached["错误"] = "旧翻译", "俱乐部", "", ""
+        cached["中文翻译"], cached["最终标签"], cached["具体主题"], cached["错误"] = "旧翻译", "玩法相关", "俱乐部", ""
         cached["处理指纹"] = [fingerprint(row, self.config) for _, row in rows.iterrows()]
         path = self.root / "processed.csv"
         atomic_csv(path, cached)
@@ -196,7 +199,6 @@ class ClassificationQualityTests(BaseTest):
         self.raw.loc[self.raw["反馈ID"].eq("001"), "用户自己填写的内容"] = "Stupid game, I cannot recharge."
         self.raw.loc[self.raw["反馈ID"].isin(["004", "005"]), "反馈标签"] = "建议"
         atomic_csv(self.root / "rows.csv", self.raw)
-        self.config["report"]["anomaly"]["new_module_min_count"] = 1
         analysis_ids = []
 
         def request(prompt, payload, config, validate, should_stop=None):

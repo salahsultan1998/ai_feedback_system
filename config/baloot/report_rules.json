@@ -1,9 +1,11 @@
 {
-  "anomaly": {
-    "min_count": 10,
-    "min_increase": 10,
-    "min_growth_rate": 0.5,
-    "new_module_min_count": 10
+  "module_growth_thresholds": {
+    "账号问题": 0.5,
+    "游戏卡顿": 0.5,
+    "玩法相关": 0.2,
+    "充值": 0.5,
+    "作弊": 0.5,
+    "其他": 0.5
   },
   "max_suggestions": 10,
   "max_issues_per_module": 3,

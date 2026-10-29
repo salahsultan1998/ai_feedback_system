@@ -16,7 +16,7 @@ from tests.helpers import BaseTest, fake_request
 class ProcessingTests(BaseTest):
     def model_result(self, feedback_id):
         return {"feedback_id": feedback_id, "translation_zh": f"反馈 {feedback_id} 的翻译",
-                "label": "游戏卡顿", "theme": "",
+                "label": "游戏卡顿", "theme": "", "subtheme": "",
                 "is_valid": True, "exclusion_reason": ""}
 
     def run_model(self, response, rows, config=None, progress=None, should_stop=None):
@@ -161,6 +161,7 @@ class ProcessingTests(BaseTest):
         cached = rows.copy()
         cached["中文翻译"], cached["最终标签"], cached["具体主题"], cached["错误"] = "已有翻译", "游戏卡顿", "", ""
         cached["是否建议"], cached["是否有效"], cached["排除原因"] = "否", "是", ""
+        cached["三级主题"] = ""
         cached["处理指纹"] = [fingerprint(row, self.config) for _, row in rows.iterrows()]
         path = self.root / "processed.csv"
         atomic_csv(path, cached)
