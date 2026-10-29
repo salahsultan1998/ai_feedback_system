@@ -27,10 +27,10 @@ def render_markdown(snapshot, analysis, config):
         "## 反馈概况", "",
         f"本期有效反馈：{snapshot['total']:,} 条；上周同期：{snapshot['previous_total']:,} 条。",
         f"变化：{change(snapshot['total'], snapshot['previous_total'])}。", "",
-        f"其中含产品建议的反馈：{snapshot['suggestion_feedback_count']:,} 条（已计入本期有效反馈总数）。", ""]
-    if selection.get("semantic_excluded_in_period"):
-        lines += [
-            f"另排除内容不明确或无法理解的反馈：本期 {selection['semantic_excluded_current']} 条、上周同期 {selection['semantic_excluded_previous']} 条；不计入有效反馈，原文与原因见 Excel 的“排除反馈明细”。", ""]
+        f"其中含建议的反馈：{snapshot['suggestion_feedback_count']:,} 条。", ""]
+    # if selection.get("semantic_excluded_in_period"):
+    #     lines += [
+    #         f"另排除内容不明确或无法理解的反馈：本期 {selection['semantic_excluded_current']} 条、上周同期 {selection['semantic_excluded_previous']} 条；不计入有效反馈，原文与原因见 Excel 的“排除反馈明细”。", ""]
     lines += ["## 有价值的玩家建议", ""]
     if not analysis["suggestions"]:
         lines.append("本期未发现明确、具体的产品改进建议。")

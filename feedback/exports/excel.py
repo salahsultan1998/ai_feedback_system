@@ -10,10 +10,10 @@ from openpyxl.utils import get_column_letter
 
 COLUMNS = {"最终标签": "反馈模块", "具体主题": "反馈系统", "反馈ID": "反馈ID", "用户ID": "用户ID",
            "VIP等级": "VIP等级", "反馈时间": "反馈时间", "中文翻译": "中文翻译",
-           "用户自己填写的内容": "原文", "反馈标签": "原标签", "用户主动选择的标签": "用户主动选择的标签", "附加信息": "附加信息",
+           "用户自己填写的内容": "原文", "附加信息": "附加信息",
            "是否建议": "是否建议"}
 EXCLUDED_COLUMNS = {"反馈ID": "反馈ID", "用户ID": "用户ID", "反馈时间": "反馈时间", "中文翻译": "中文翻译",
-                    "用户自己填写的内容": "原文", "反馈标签": "原标签", "排除原因": "排除原因"}
+                    "用户自己填写的内容": "原文", "排除原因": "排除原因"}
 
 
 def write_excel(snapshot, config, path):
@@ -33,7 +33,7 @@ def write_excel(snapshot, config, path):
         sheet["A2"] = (f"本期及上周同期 · {len(rows)} 条语义排除反馈，不计入统计" if key == "excluded" else
                        f"{period['start']} 至 {period['end']}（含首尾日期） · {len(rows)} 条")
         sheet["A2"].font = Font(size=11, color="64748B")
-        widths = [20, 20, 24, 64, 64, 22, 40] if key == "excluded" else [20, 24, 20, 20, 12, 24, 64, 64, 22, 24, 40, 12]
+        widths = [20, 20, 24, 64, 64, 40] if key == "excluded" else [20, 24, 20, 20, 12, 24, 64, 64, 40, 12]
         for column, (name, width) in enumerate(zip(columns.values(), widths), 1):
             sheet.column_dimensions[get_column_letter(column)].width = width
             cell = sheet.cell(4, column, name)

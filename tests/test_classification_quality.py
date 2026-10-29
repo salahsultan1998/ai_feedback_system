@@ -104,12 +104,17 @@ class ClassificationQualityTests(BaseTest):
         book = load_workbook(folder / "feedback_details.xlsx")
         try:
             self.assertEqual(book.sheetnames, ["本期反馈明细", "上周同期反馈明细", "排除反馈明细"])
-            self.assertEqual(book["本期反馈明细"]["L4"].value, "是否建议")
-            self.assertEqual(book["本期反馈明细"]["L5"].value, "否")
+            self.assertEqual(book["本期反馈明细"]["J4"].value, "是否建议")
+            for sheet in book:
+                headers = [cell.value for cell in sheet[4]]
+                self.assertNotIn("原标签", headers)
+                self.assertNotIn("用户主动选择的标签", headers)
+            self.assertEqual(book["本期反馈明细"].column_dimensions["I"].width, 40)
+            self.assertEqual(book["本期反馈明细"]["J5"].value, "否")
             self.assertEqual(book["排除反馈明细"]["A5"].value, "004")
             self.assertEqual(book["排除反馈明细"]["E5"].value, "=1+1")
             self.assertEqual(book["排除反馈明细"]["E5"].data_type, "s")
-            self.assertEqual(book["排除反馈明细"]["G5"].value, "缺少明确反馈对象或诉求")
+            self.assertEqual(book["排除反馈明细"]["F5"].value, "缺少明确反馈对象或诉求")
         finally:
             book.close()
         self.assertNotIn("004", {r[3] for r in detail_rows(folder)[1:]})
