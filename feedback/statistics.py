@@ -1,6 +1,7 @@
 """All report numbers and attention flags are computed here, not by AI."""
 from .cleaning import parse_dates
 from .selection import period_mask
+from .policies import abuse_mask, suggestion_mask
 
 
 def change_rate(current, previous):
@@ -8,24 +9,30 @@ def change_rate(current, previous):
 
 
 def build_statistics(processed, selection, config):
-    for column in ("是否有效", "是否建议"):
-        if column not in processed or not processed[column].isin(["是", "否"]).all():
-            raise ValueError("处理结果缺少有效性或建议判断，请按新规则重新生成。")
+    if "是否有效" not in processed or not processed["是否有效"].isin(["是", "否"]).all():
+        raise ValueError("处理结果缺少有效性判断，请按新规则重新生成。")
+    processed = processed.copy()
     dates = parse_dates(processed["反馈时间"])
-    valid = processed["是否有效"].eq("是")
+    abusive = abuse_mask(processed)
+    valid = processed["是否有效"].eq("是") & ~abusive
+    semantic_excluded = ~valid & ~abusive
+    processed["是否建议"] = (valid & suggestion_mask(processed, config)).map({True: "是", False: "否"})
     current_mask = period_mask(dates, selection["periods"]["current"])
     previous_mask = period_mask(dates, selection["periods"]["previous"])
     current = processed.loc[valid & current_mask].copy()
     previous = processed.loc[valid & previous_mask].copy()
-    excluded = processed.loc[~valid].copy()
+    excluded = processed.loc[semantic_excluded].copy()
     selection = {**selection, "candidate_current_count": int(current_mask.sum()),
         "candidate_previous_count": int(previous_mask.sum()), "processed_count": len(processed),
         "current_count": len(current), "previous_count": len(previous), "selected_count": int(valid.sum()),
         "semantic_excluded_in_period": len(excluded),
-        "semantic_excluded_current": int((~valid & current_mask).sum()),
-        "semantic_excluded_previous": int((~valid & previous_mask).sum()),
+        "semantic_excluded_current": int((semantic_excluded & current_mask).sum()),
+        "semantic_excluded_previous": int((semantic_excluded & previous_mask).sum()),
+        "abusive_excluded_in_period": int(abusive.sum()),
+        "abusive_excluded_current": int((abusive & current_mask).sum()),
+        "abusive_excluded_previous": int((abusive & previous_mask).sum()),
         "source_excluded_in_period": selection.get("excluded_in_period", 0),
-        "excluded_in_period": selection.get("excluded_in_period", 0) + len(excluded)}
+        "excluded_in_period": selection.get("excluded_in_period", 0) + int((~valid).sum())}
     counts, old_counts = current["最终标签"].value_counts(), previous["最终标签"].value_counts()
     rules = config["report"]["anomaly"]
     modules = []

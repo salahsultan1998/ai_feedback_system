@@ -40,6 +40,11 @@ def load_config(code, root=ROOT):
             raise ValueError(f"配置 {key} 必须为正整数。")
     if config["max_retries"] < 0 or config["retry_delay"] < 0:
         raise ValueError("重试配置不可为负数。")
+    suggestion_labels = config.get("suggestion_labels", ["建议"])
+    if (not isinstance(suggestion_labels, list) or not suggestion_labels or
+            any(not isinstance(label, str) or not label.strip() or label != label.strip() for label in suggestion_labels) or
+            len(set(suggestion_labels)) != len(suggestion_labels)):
+        raise ValueError("suggestion_labels 必须是不重复的非空源标签列表。")
     report = config["report"]
     if report["ai_max_input_chars"] < 3000 or any(report[k] < 1 for k in
             ("max_suggestions", "max_issues_per_module", "max_evidence_ids")):

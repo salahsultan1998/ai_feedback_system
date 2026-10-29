@@ -15,28 +15,38 @@ def change(current, previous):
     if not previous:
         return "新增（上周同期为 0）" if current else "持平"
     delta = current - previous
-    return "=（0.0%）" if not delta else f"{'+' if delta > 0 else '-'} {abs(delta):,} 条（{abs(delta / previous):.1%}）"
+    return "持平（0.0%）" if not delta else f"{'↑' if delta > 0 else '↓'} {abs(delta):,} 条（{delta / previous:+.1%}）"
 
 
 def render_markdown(snapshot, analysis, config):
     selection = snapshot["selection"]
     current, previous = (selection["periods"][key] for key in ("current", "previous"))
-    lines = [f"# {safe(config['name'])} 玩家反馈报告", "",
+    lines = [f"# {safe(config['name'])} 用户反馈报告", "",
         f"报告期间：{current['start']} 至 {current['end']}（含首尾日期）",
         f"对比期间：{previous['start']} 至 {previous['end']}（上周相同日期）", "",
         "## 反馈概况", "",
         f"本期有效反馈：{snapshot['total']:,} 条；上周同期：{snapshot['previous_total']:,} 条。",
         f"变化：{change(snapshot['total'], snapshot['previous_total'])}。", "",
-        f"其中含建议的反馈：{snapshot['suggestion_feedback_count']:,} 条。", ""]
+        # f"其中原标签为建议的有效反馈：{snapshot['suggestion_feedback_count']:,} 条。", ""
+        ]
     # if selection.get("semantic_excluded_in_period"):
     #     lines += [
     #         f"另排除内容不明确或无法理解的反馈：本期 {selection['semantic_excluded_current']} 条、上周同期 {selection['semantic_excluded_previous']} 条；不计入有效反馈，原文与原因见 Excel 的“排除反馈明细”。", ""]
     lines += ["## 有价值的玩家建议", ""]
     if not analysis["suggestions"]:
         lines.append("本期未发现明确、具体的产品改进建议。")
+    users = ({str(row["反馈ID"]): str(row["用户ID"]).strip()
+              for row in snapshot["current"].fillna("").to_dict("records")} if analysis["suggestions"] else {})
     for index, item in enumerate(analysis["suggestions"], 1):
-        lines.append(f"{index}. {safe(item['text'])}（反馈 ID：{safe('、'.join(item['feedback_ids']))}）")
-    lines += ["", "## 按主标签统计", "",
+        if any(fid not in users for fid in item["feedback_ids"]):
+            raise ValueError("建议引用了不属于本期有效反馈的记录。")
+        user_ids = list(dict.fromkeys(users[fid] for fid in item["feedback_ids"] if users[fid]))
+        missing = any(not users[fid] for fid in item["feedback_ids"])
+        attribution = "、".join(user_ids) if user_ids else "未提供"
+        if missing and user_ids:
+            attribution += "；另有用户 ID 未提供"
+        lines.append(f"{index}. {safe(item['text'])}（用户 ID：{safe(attribution)}）")
+    lines += ["", "## 反馈统计", "",
         "| 反馈模块 | 本期数量 | 本期占比 | 上周同期数量 | 变化 | 重点问题分析 |",
         "| :--- | ---: | ---: | ---: | :--- | :--- |"]
     for module in snapshot["modules"]:

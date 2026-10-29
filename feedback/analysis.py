@@ -3,18 +3,20 @@ import json
 
 from .ai_client import cached_request, check_stop
 from .report_language import validate_report_language
+from .policies import abuse_mask, is_suggestion_label, suggestion_mask
 
 
-def evidence(item, allowed, config, max_chars):
+def evidence(item, allowed, config, max_chars, max_ids=None, id_field="feedback_ids"):
     if not isinstance(item, dict) or not isinstance(item.get("text"), str):
         raise ValueError("AI 分析缺少文字。")
-    text, ids = item["text"].strip(), item.get("feedback_ids")
-    if not text or len(text) > max_chars or not isinstance(ids, list) or not 1 <= len(ids) <= config["report"]["max_evidence_ids"]:
+    text, ids = item["text"].strip(), item.get(id_field)
+    maximum = config["report"]["max_evidence_ids"] if max_ids is None else max_ids
+    if not text or len(text) > max_chars or not isinstance(ids, list) or not 1 <= len(ids) <= maximum:
         raise ValueError("AI 分析文字长度或引用数量无效。")
     validate_report_language(text)
     if any(not isinstance(fid, str) or fid not in allowed for fid in ids) or len(set(ids)) != len(ids):
         raise ValueError("AI 分析引用了未知或重复的反馈 ID。")
-    return {"text": text, "feedback_ids": ids}
+    return {"text": text, id_field: ids}
 
 
 def batches(items, metadata, limit):
@@ -35,19 +37,36 @@ def fragments(rows, config):
     for row in rows.sort_values("反馈ID").to_dict("records"):
         for offset in range(0, len(row["中文翻译"]), size):
             yield {"feedback_id": str(row["反馈ID"]), "label": row["最终标签"],
-                   "theme": row["具体主题"] or "未细分", "is_suggestion": row["是否建议"] == "是",
+                   "theme": row["具体主题"] or "未细分", "is_suggestion": is_suggestion_label(row["反馈标签"], config),
                    "text": row["中文翻译"][offset:offset + size]}
 
 
 def analyze_report(snapshot, config, cache_dir, progress, should_stop=None):
     rules = config["report"]
     limit = rules["ai_max_input_chars"]
+    current = snapshot["current"].loc[~abuse_mask(snapshot["current"])]
+    suggestion_rows = current.loc[suggestion_mask(current, config)]
+    source_labels = suggestion_rows.set_index("反馈ID")["最终标签"].to_dict()
 
     def ask(name, batch, metadata, suggestions=False):
         check_stop(should_stop)
+        merging = suggestions and metadata["stage"] == "合并"
+        candidates = {item["candidate_id"]: item for item in batch} if merging else {}
         allowed = set()
         for item in batch:
-            allowed.update(item.get("feedback_ids", [item.get("feedback_id")]))
+            allowed.update([item["candidate_id"]] if merging else item.get("feedback_ids", [item.get("feedback_id")]))
+
+        def suggestion_sources(item):
+            if merging:
+                selected = [candidates[cid] for cid in item["candidate_ids"]]
+                labels = {candidate["label"] for candidate in selected}
+                ids = list(dict.fromkeys(fid for candidate in selected for fid in candidate["feedback_ids"]))
+            else:
+                ids = item["feedback_ids"]
+                labels = {source_labels[fid] for fid in ids}
+            if len(labels) != 1:
+                raise ValueError("不同模块的建议不可合并为同一条。")
+            return {"text": item["text"], "label": next(iter(labels)), "feedback_ids": ids}
 
         def validate(value):
             if not suggestions:
@@ -56,41 +75,74 @@ def analyze_report(snapshot, config, cache_dir, progress, should_stop=None):
                 raise ValueError("AI 建议必须为列表。")
             if len(value["suggestions"]) > metadata["max_items"]:
                 raise ValueError("AI 建议超过数量限制。")
-            return {"suggestions": [evidence(item, allowed, config, 140) for item in value["suggestions"]]}
-        return cached_request(name, {**metadata, "items": batch}, config, cache_dir, validate, should_stop)
+            checked = []
+            for item in value["suggestions"]:
+                item = evidence(item, allowed, config, 140, max_ids=len(allowed),
+                                id_field="candidate_ids" if merging else "feedback_ids")
+                suggestion_sources(item)
+                checked.append(item)
+            # Keep wire references in cache, so retries can validate the same shape.
+            return {"suggestions": checked}
+
+        inputs = batch
+        if merging:
+            # Source lists can grow large. Compact references let the backend
+            # preserve every contributor without sending them through each merge.
+            inputs = [{key: item[key] for key in ("candidate_id", "label", "text")} for item in batch]
+        result = cached_request(name, {**metadata, "items": inputs}, config, cache_dir, validate, should_stop)
+        if suggestions:
+            return {"suggestions": [suggestion_sources(item) for item in result["suggestions"]]}
+        return result
 
     progress(stage="analysis", message="正在提炼玩家建议", done=0, total=0)
-    meta = {"stage": "提取", "max_items": rules["max_suggestions"], "max_evidence_ids": rules["max_evidence_ids"]}
+    meta = {"stage": "提取", "max_items": rules["max_suggestions"]}
     suggestions = []
-    suggestion_rows = snapshot["current"].loc[snapshot["current"]["是否建议"].eq("是")]
     initial_batches = list(batches(fragments(suggestion_rows, config), meta, limit))
     for batch in initial_batches:
         suggestions.extend(ask("suggestions", batch, meta, True)["suggestions"])
-    if len(initial_batches) > 1 and suggestions:
+    if len(suggestions) > 1:
         meta = {**meta, "stage": "合并"}
         while True:
-            grouped = list(batches(suggestions, meta, limit))
+            candidates = {f"s{index}": item for index, item in enumerate(suggestions)}
+            compact = [{"candidate_id": cid, "label": item["label"], "text": item["text"]}
+                       for cid, item in candidates.items()]
+            grouped = list(batches(compact, meta, limit))
+
+            def merge(batch, options):
+                expanded = [{**item, "feedback_ids": candidates[item["candidate_id"]]["feedback_ids"]} for item in batch]
+                return ask("suggestions", expanded, options, True)["suggestions"]
+
             if len(grouped) == 1:
-                suggestions = ask("suggestions", grouped[0], meta, True)["suggestions"]
+                suggestions = merge(grouped[0], meta)
                 break
             reduced = []
             for batch in grouped:
                 if len(batch) == 1:
-                    reduced.extend(batch)
+                    reduced.append(candidates[batch[0]["candidate_id"]])
                 else:
-                    reduced.extend(ask("suggestions", batch, {**meta, "max_items": min(rules["max_suggestions"], max(1, len(batch) // 2))}, True)["suggestions"])
+                    reduced.extend(merge(batch, {**meta, "max_items": min(rules["max_suggestions"], max(1, len(batch) // 2))}))
             if len(reduced) >= len(suggestions):
                 raise ValueError("建议无法在长度限制内合并，请调整报告配置。")
             suggestions = reduced
             if not suggestions:
                 break
 
+    # Do not rely on the model to remove literally identical final entries.
+    unique = {}
+    for item in suggestions:
+        key = (item["label"], item["text"])
+        if key not in unique:
+            unique[key] = {**item, "feedback_ids": list(item["feedback_ids"])}
+        else:
+            unique[key]["feedback_ids"] = list(dict.fromkeys(unique[key]["feedback_ids"] + item["feedback_ids"]))
+    suggestions = list(unique.values())
+
     issues = {}
     for module in snapshot["modules"]:
         if not module["flagged"]:
             continue
         progress(stage="analysis", message=f"正在分析：{module['label']}", done=0, total=0)
-        rows = snapshot["current"].loc[snapshot["current"]["最终标签"].eq(module["label"])].copy()
+        rows = current.loc[current["最终标签"].eq(module["label"])].copy()
         rows["具体主题"] = rows["具体主题"].replace("", "未细分")
         issues[module["label"]] = []
         for theme in rows["具体主题"].value_counts().head(rules["max_issues_per_module"]).index:

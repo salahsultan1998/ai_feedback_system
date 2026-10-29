@@ -282,7 +282,8 @@ async function displayJob(data) {
         if (Number.isInteger(finalSelection.processed_count)) {
             $("#period-counts").textContent = `本期有效 ${data.result.total.toLocaleString()} 条 · 上周同期有效 ${data.result.previous_total.toLocaleString()} 条`;
             $("#selection-note").textContent = `已分析 ${finalSelection.processed_count.toLocaleString()} 条候选反馈，保留两期共 ${finalSelection.selected_count.toLocaleString()} 条有效反馈。` +
-                (finalSelection.semantic_excluded_in_period ? `另排除 ${finalSelection.semantic_excluded_in_period} 条内容不明确或无法理解的反馈，原文与原因见 Excel“排除反馈明细”。` : "");
+                (finalSelection.semantic_excluded_in_period ? `另排除 ${finalSelection.semantic_excluded_in_period} 条内容不明确或无法理解的反馈，原文与原因见 Excel“排除反馈明细”。` : "") +
+                (finalSelection.abusive_excluded_in_period ? `已剔除 ${finalSelection.abusive_excluded_in_period} 条含辱骂内容的反馈，不计入统计，也不导出。` : "");
         }
         const report = await api(`${jobUrl()}/report`);
         showPush(report.feishu);

@@ -8,6 +8,8 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.worksheet.table import Table, TableStyleInfo
 from openpyxl.utils import get_column_letter
 
+from ..policies import abuse_mask
+
 COLUMNS = {"最终标签": "反馈模块", "具体主题": "反馈系统", "反馈ID": "反馈ID", "用户ID": "用户ID",
            "VIP等级": "VIP等级", "反馈时间": "反馈时间", "中文翻译": "中文翻译",
            "用户自己填写的内容": "原文", "附加信息": "附加信息",
@@ -24,7 +26,9 @@ def write_excel(snapshot, config, path):
         groups.append(("excluded", "排除反馈明细"))
     for key, title in groups:
         columns = EXCLUDED_COLUMNS if key == "excluded" else COLUMNS
-        rows = snapshot[key].sort_values(["最终标签", "具体主题", "反馈时间", "反馈ID"])
+        rows = snapshot[key].loc[~abuse_mask(snapshot[key])].sort_values(["最终标签", "具体主题", "反馈时间", "反馈ID"])
+        if key == "excluded" and rows.empty:
+            continue
         sheet = book.create_sheet(title)
         sheet.sheet_view.showGridLines = False
         period = snapshot["selection"]["periods"]["current" if key == "excluded" else key]

@@ -16,7 +16,7 @@ from tests.helpers import BaseTest, fake_request
 class ProcessingTests(BaseTest):
     def model_result(self, feedback_id):
         return {"feedback_id": feedback_id, "translation_zh": f"反馈 {feedback_id} 的翻译",
-                "label": "游戏卡顿", "theme": "", "is_suggestion": False,
+                "label": "游戏卡顿", "theme": "",
                 "is_valid": True, "exclusion_reason": ""}
 
     def run_model(self, response, rows, config=None, progress=None, should_stop=None):
@@ -156,7 +156,7 @@ class ProcessingTests(BaseTest):
         self.assertEqual([item["feedback_id"] for item in request.call_args.args[1]["feedbacks"]], ["001", "002"])
         self.assertTrue(result["错误"].eq("").all())
 
-    def test_completed_v2_row_cache_survives_batch_size_change(self):
+    def test_current_row_cache_survives_batch_size_change(self):
         rows, _ = clean_feedback(self.raw.iloc[:3], self.config)
         cached = rows.copy()
         cached["中文翻译"], cached["最终标签"], cached["具体主题"], cached["错误"] = "已有翻译", "游戏卡顿", "", ""

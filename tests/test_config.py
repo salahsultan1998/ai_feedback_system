@@ -5,6 +5,17 @@ from feedback.config import load_config, load_settings, read_json
 
 
 class ConfigurationTests(TestCase):
+    def test_suggestion_source_labels_must_be_explicit_unique_names(self):
+        for labels in ("建议", [], [""], ["建议", "建议"], [" 建议"], [True]):
+            def read(path):
+                value = read_json(path)
+                if str(path).endswith("baloot/settings.json"):
+                    value["suggestion_labels"] = labels
+                return value
+            with self.subTest(labels=labels), patch("feedback.config.read_json", side_effect=read):
+                with self.assertRaisesRegex(ValueError, "suggestion_labels"):
+                    load_config("baloot")
+
     def test_game_batch_settings_override_global_defaults(self):
         def read(path):
             value = read_json(path)

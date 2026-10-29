@@ -6,6 +6,7 @@ from unittest.mock import patch
 from feedback import feishu, feishu_sheets
 from feedback.feishu_api import ApiError, Client, _tokens
 from feedback.workflow import run_report
+from feedback.storage import atomic_csv
 from tests.helpers import BaseTest, fake_request
 
 
@@ -59,6 +60,8 @@ class FakeSheets:
 class SheetTests(BaseTest):
     def setUp(self):
         super().setUp()
+        self.raw["反馈标签"] = "建议"
+        atomic_csv(self.root / "rows.csv", self.raw)
         with patch("feedback.ai_client.request_json", side_effect=fake_request):
             run_report(self.root, self.config, "2026-10-19", "2026-10-22", False,
                        "report", lambda **v: None)
