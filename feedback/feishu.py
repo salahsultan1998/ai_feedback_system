@@ -14,7 +14,7 @@ from urllib.request import Request, build_opener, HTTPRedirectHandler
 from urllib.error import HTTPError, URLError
 
 from .storage import atomic_json
-from . import feishu_cards, feishu_sheets
+from . import feishu_cards, feishu_sheets, report_review
 
 FORMAT = "card-native-table-v2"
 MAX_BODY_BYTES = 18000  # Below Feishu's 20 KB limit, including JSON and signatures.
@@ -216,6 +216,7 @@ def push(folder, config, retry_unknown=False):
         widths = saved.get("table_column_widths", widths)
     legacy = saved.get("format") == "card-markdown-v1" and saved.get("sent_parts", 0) > 0
     send_format = "card-markdown-v1" if legacy else FORMAT
+    report_review.mark_push_started(folder)
     sheet = feishu_sheets.sync(folder, config)
     text = report_text(folder, sheet["url"] if sheet else None)
     if legacy:

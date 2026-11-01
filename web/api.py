@@ -14,7 +14,7 @@ from feedback.cleaning import clean_feedback, parse_dates
 from feedback.storage import atomic_csv, atomic_json, read_csv
 from feedback.workflow import prepare_selection
 from feedback.jobs import BusyError
-from feedback import feishu
+from feedback import feishu, report_review
 
 api = Blueprint("api", __name__, url_prefix="/api")
 
@@ -35,7 +35,7 @@ def csrf():
 
 @api.errorhandler(ValueError)
 def invalid(error):
-    return jsonify(error=str(error)), 409 if isinstance(error, BusyError) else 400
+    return jsonify(error=str(error)), 409 if isinstance(error, (BusyError, report_review.ReviewConflict)) else 400
 
 
 @api.errorhandler(Exception)
@@ -152,15 +152,55 @@ def completed_folder(game, run, job):
     return storage.folder(game, run) / "reports" / job
 
 
-@api.get("/games/<game>/uploads/<run>/jobs/<job>/report")
-def report_preview(game, run, job):
-    folder = completed_folder(game, run, job)
+def report_response(folder, game, run, job):
     text = (folder / "report.md").read_text(encoding="utf-8")
     html = markdown.markdown(text, extensions=["tables"])
     # Export's relative link points to the matching downloadable workbook in browser preview.
     excel_url = url_for("api.download", game=game, run=run, job=job, kind="excel")
     html = html.replace('href="feedback_details.xlsx"', f'href="{excel_url}"')
-    return jsonify(html=html, feishu=feishu.state(folder, config_for(game)))
+    return jsonify(html=html, feishu=feishu.state(folder, config_for(game)),
+                   review=report_review.summary(folder, text=text))
+
+
+def prepare_review(folder):
+    # Older reports can recover immutable evidence from their own completed workbook.
+    # Serialize the one-time snapshot with saves and push startup.
+    lock = current_app.extensions["feishu_lock"]
+    if lock.acquire(blocking=False):
+        try:
+            report_review.prepare_existing(folder)
+        finally:
+            lock.release()
+
+
+@api.get("/games/<game>/uploads/<run>/jobs/<job>/report")
+def report_preview(game, run, job):
+    folder = completed_folder(game, run, job)
+    prepare_review(folder)
+    return report_response(folder, game, run, job)
+
+
+@api.get("/games/<game>/uploads/<run>/jobs/<job>/review")
+def review_details(game, run, job):
+    folder = completed_folder(game, run, job)
+    prepare_review(folder)
+    return jsonify(report_review.details(folder))
+
+
+@api.post("/games/<game>/uploads/<run>/jobs/<job>/review")
+def review_save(game, run, job):
+    folder = completed_folder(game, run, job)
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        raise ValueError("请求格式无效。")
+    lock = current_app.extensions["feishu_lock"]
+    if not lock.acquire(blocking=False):
+        raise BusyError("正在保存或推送报告，请稍后再试。")
+    try:
+        report_review.save(folder, data.get("version"), data.get("suggestions"))
+        return report_response(folder, game, run, job)
+    finally:
+        lock.release()
 
 
 @api.post("/games/<game>/uploads/<run>/jobs/<job>/push/feishu")
@@ -175,6 +215,8 @@ def push_feishu(game, run, job):
         data = request.get_json(silent=True) or {}
         if not isinstance(data, dict):
             raise ValueError("请求格式无效。")
+        if "report_version" in data and data["report_version"] != report_review.summary(folder)["version"]:
+            raise report_review.ReviewConflict("报告已被修改，请重新打开报告核对后再推送。")
         return jsonify(feishu.push(folder, config_for(game), retry_unknown=data.get("retry_unknown") is True))
     finally:
         lock.release()

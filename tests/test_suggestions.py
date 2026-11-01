@@ -25,7 +25,7 @@ class SuggestionGroupingTests(BaseTest):
             module["flagged"] = False
         return snapshot
 
-    def test_equivalent_suggestions_merge_with_deduplicated_user_ids_and_reuse_cache(self):
+    def test_equivalent_suggestions_merge_with_all_feedback_ids_and_reuse_cache(self):
         snapshot = self.snapshot([{"用户ID": "001234"}, {"用户ID": "5434"}, {"用户ID": "001234"}])
         payloads = []
 
@@ -48,10 +48,10 @@ class SuggestionGroupingTests(BaseTest):
         self.assertEqual(len(result["suggestions"]), 1)
         self.assertEqual(len(result["suggestions"][0]["feedback_ids"]), 3)
         text = render_markdown(snapshot, result, self.config)
-        self.assertIn("1. 增加相册功能（用户 ID：001234、5434）", text)
-        self.assertNotIn("反馈 ID：", text)
+        self.assertIn("1. 增加相册功能（反馈 ID：feedback-00000、feedback-00001、feedback-00002）", text)
+        self.assertNotIn("用户 ID：", text)
         self.assertNotIn("invented-user", text)
-        # Display IDs are mapped locally; they are not added to model inputs.
+        # User account IDs are never added to model inputs.
         self.assertNotIn("001234", json.dumps(payloads))
         self.assertNotIn("5434", json.dumps(payloads))
 
@@ -131,15 +131,14 @@ class SuggestionGroupingTests(BaseTest):
         self.assertEqual(set(result["suggestions"][0]["feedback_ids"]), set(snapshot["current"]["反馈ID"]))
         self.assertGreater(len(json.dumps(result["suggestions"][0])), 3000)
         text = render_markdown(snapshot, result, self.config)
-        for user in snapshot["current"]["用户ID"]:
-            self.assertIn(user, text)
+        for feedback_id in snapshot["current"]["反馈ID"]:
+            self.assertIn(feedback_id, text)
 
-    def test_missing_user_id_is_explicit_and_never_replaced_by_feedback_id(self):
-        for users, expected in [(["", None], "用户 ID：未提供"),
-                                (["001234", ""], "用户 ID：001234；另有用户 ID 未提供")]:
+    def test_missing_user_id_does_not_change_feedback_id_attribution(self):
+        for users in (["", None], ["001234", ""]):
             snapshot = self.snapshot([{"用户ID": uid} for uid in users])
             result = {"suggestions": [{"text": "增加相册功能", "feedback_ids": list(snapshot["current"]["反馈ID"])}], "issues": {}}
             with self.subTest(users=users):
                 text = render_markdown(snapshot, result, self.config)
-                self.assertIn(expected, text)
-                self.assertNotIn("feedback-", text)
+                self.assertIn("反馈 ID：feedback-00000、feedback-00001", text)
+                self.assertNotIn("用户 ID：", text)

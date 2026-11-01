@@ -243,7 +243,7 @@ class ClassificationQualityTests(BaseTest):
         markdown = (folder / "report.md").read_text()
         self.assertNotIn("001", markdown)
         self.assertNotIn("004", markdown)
-        self.assertIn("（用户 ID：0009）", markdown)
+        self.assertIn("（反馈 ID：005）", markdown)
 
     def test_all_abusive_feedback_exports_empty_valid_sheets_without_excluded_sheet(self):
         def request(prompt, payload, config, validate, should_stop=None):

@@ -22,10 +22,21 @@ Create `.env` in the project root using `.env.example` and set `OPENROUTER_API_K
 4. Review current, comparison, excluded and out-of-range counts. Only the union of the two periods enters translation/classification. Gaps between periods are ignored. For periods longer than seven days, overlapping records are processed once and counted independently in each period.
 5. Generate the report. Translation/classification saves each completed batch. Stop lets in-flight requests finish, saves their work and prevents subsequent requests. Retry the same upload to reuse matching results.
 6. Read the report preview or download `report.md` and `feedback_details.xlsx`. Excel contains **本期反馈明细** and **上周同期反馈明细**, with original text, Chinese translations, categories and source fields.
+7. Before pushing to Feishu, optionally choose **编辑建议** to check the source feedback and correct suggestion wording. Save the changes, then push the reviewed report.
 
 The workspace keeps file/date controls together, uses Data/Report tabs, and scrolls long tables and reports inside their panel. Completed reports open automatically in the Report tab, with downloads in its toolbar.
 
 Use `examples/feedback_sample.csv` for upload/preview testing and select **2026-10-19 through 2026-10-22**. All sample messages and IDs are artificial. Generating even a sample report uses the configured paid API; automated tests mock it.
+
+### Manually review suggestions
+
+The Report toolbar includes **编辑建议**. Each suggestion has an editable text box, fixed feedback IDs, and read-only player originals beside their AI Chinese translations. The first cited source is shown immediately; **展开其余 N 条来源** reveals every remaining reference, including all contributors to merged suggestions. Arabic and other source text follow their own writing direction. Original text is displayed as plain text.
+
+**保存修改** updates only the suggestion wording in the actual `report.md`; preview, Markdown download and the Feishu push all use that saved version. It does not rerun AI, change counts or categories, or change the Excel translation details. **取消** discards the current drafts. **恢复原始建议** puts the original AI wording back into the editor; click Save to apply it. Changed saved reports display **已人工修改**. Wording is limited to 2,000 characters per suggestion and uses the report's existing Chinese language validation. Newlines become spaces in the report's single-paragraph suggestion list.
+
+The editor saves against the version it opened, rejecting stale saves instead of overwriting newer edits. Pending edits block Markdown downloads and Feishu pushes until saved or canceled. Once Feishu push preparation begins, the report is permanently locked for editing, including failed or interrupted detail uploads and partly sent messages. This keeps resumed messages consistent. Invalid Feishu credentials or width configuration detected before push preparation do not freeze the report.
+
+New reports preserve their original Markdown in `report.original.md` and their report-specific suggestion evidence in `review.json`. These sources are not read from later processing checkpoints. Older unpushed reports that already cite feedback IDs can recover the snapshot from their own completed Excel current-period detail sheet. If IDs or required source fields cannot be verified, editing remains unavailable with an explanation; older user-ID-only reports require regeneration. Saved reports and references remain on disk under the existing storage retention rules.
 
 ## Coverage and data rules
 
@@ -158,6 +169,9 @@ storage/<game>/<upload-id>/
   analysis_cache/               Reusable successful report-AI responses
   reports/<job-id>/
     report.md
+    report.original.md           Original report before manual edits
+    review.json                  Immutable suggestion texts and cited source feedback
+    review.lock.json             Created when Feishu push preparation begins
     feedback_details.xlsx
     config_snapshot.json
 ```

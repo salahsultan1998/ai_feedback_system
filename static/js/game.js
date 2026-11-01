@@ -8,6 +8,9 @@ let run = null, page = 1, totalPages = 1, selection = null, job = null;
 let busy = false, uploading = false, filePending = false, timer = null, selectionVersion = 0;
 let pushUnknown = false;
 let reportComplete = false;
+let reviewState = null, reviewDetail = null, reviewFields = [];
+let editingReview = false, loadingReview = false, savingReview = false, pushing = false;
+let lastPush = {};
 
 // Start fresh on reload, including links created by the previous layout.
 const cleanUrl = new URL(window.location.href);
@@ -17,6 +20,11 @@ $("#upload-form").reset();
 $("#report-form").reset();
 window.addEventListener("pageshow", event => {
     if (event.persisted) window.location.reload();
+});
+window.addEventListener("beforeunload", event => {
+    if (!reviewDirty()) return;
+    event.preventDefault();
+    event.returnValue = "";
 });
 
 function switchTab(name, focus = false) {
@@ -62,7 +70,199 @@ function post(url, data) {
 
 function runUrl() { return `${base}/${run}`; }
 function jobUrl() { return `${runUrl()}/jobs/${job}`; }
+function reviewDirty() {
+    return editingReview && reviewFields.some(({item, input}) => input.value !== item.text);
+}
+
+function reviewControls() {
+    const inEditor = editingReview || loadingReview;
+    const edit = $("#edit-suggestions");
+    edit.disabled = !reviewState?.editable || inEditor || savingReview || pushing;
+    edit.textContent = loadingReview ? "正在读取…" : "编辑建议";
+    edit.title = reviewState?.locked_reason || "对照玩家原文，人工修正建议";
+    $("#push-feishu").disabled = !lastPush.available || lastPush.status === "sent" || inEditor || savingReview || pushing;
+    $("#download-md").setAttribute("aria-disabled", String(inEditor || savingReview));
+    $("#download-md").title = inEditor ? "请先保存或取消建议修改，再下载 Markdown" : "下载已保存的报告";
+    const dirty = reviewDirty();
+    $("#save-review").disabled = !dirty || savingReview;
+    $("#save-review").textContent = savingReview ? "正在保存…" : "保存修改";
+    $("#cancel-review").disabled = savingReview;
+    $("#restore-suggestions").disabled = savingReview || !reviewFields.some(({item, input}) => input.value !== item.original_text);
+    for (const {input} of reviewFields) input.disabled = savingReview;
+    $("#review-draft-status").textContent = savingReview ? "正在保存，请稍候。" : dirty ? "有未保存修改 · 保存后再推送或下载 MD" : "正在查看已保存的建议";
+    const status = $("#review-status");
+    status.classList.toggle("modified", Boolean(reviewState?.modified));
+    status.textContent = reviewState?.locked_reason || (reviewState?.modified ? "已人工修改 · 预览、Markdown 下载与飞书推送使用已保存版本" : "");
+    status.hidden = !status.textContent;
+}
+
+function applyReport(report) {
+    reviewState = report.review || null;
+    $("#report-preview").innerHTML = report.html;
+    showPush(report.feishu);
+    reviewControls();
+}
+
+function closeReview() {
+    editingReview = false;
+    reviewDetail = null;
+    reviewFields = [];
+    $("#review-editor").hidden = true;
+    $("#review-items").replaceChildren();
+    $("#report-preview").hidden = false;
+    controls();
+    reviewControls();
+}
+
+function resetReview() {
+    editingReview = loadingReview = savingReview = false;
+    reviewState = reviewDetail = null;
+    reviewFields = [];
+    lastPush = {};
+    $("#review-editor").hidden = true;
+    $("#review-items").replaceChildren();
+    reviewControls();
+}
+
+function sourceCard(source) {
+    const card = document.createElement("div");
+    card.className = "review-source";
+    const id = document.createElement("span");
+    id.className = "source-id";
+    id.textContent = `反馈 ID：${source.feedback_id}`;
+    const columns = document.createElement("div");
+    columns.className = "source-columns";
+    for (const [label, text, direction] of [["玩家原文", source.original_text, "auto"], ["AI 中文翻译", source.translation_zh, "ltr"]]) {
+        const column = document.createElement("div");
+        const title = document.createElement("span");
+        title.className = "source-label";
+        title.textContent = label;
+        const body = document.createElement("p");
+        body.className = "source-text";
+        body.dir = direction;
+        body.textContent = text || "未提供";
+        column.append(title, body);
+        columns.append(column);
+    }
+    card.append(id, columns);
+    return card;
+}
+
+function renderReview(detail) {
+    reviewDetail = detail;
+    reviewFields = [];
+    const cards = detail.suggestions.map((item, index) => {
+        const card = document.createElement("section");
+        card.className = "suggestion-review";
+        const label = document.createElement("label");
+        const input = document.createElement("textarea");
+        input.id = `suggestion-draft-${index}`;
+        input.value = item.text;
+        input.maxLength = 2000;
+        input.rows = 3;
+        input.required = true;
+        input.addEventListener("input", reviewControls);
+        label.htmlFor = input.id;
+        label.textContent = `建议 ${index + 1}`;
+        const ids = document.createElement("p");
+        ids.className = "suggestion-ids";
+        ids.textContent = `反馈 ID：${item.feedback_ids.join("、")}`;
+        const sources = document.createElement("div");
+        sources.className = "review-sources";
+        const heading = document.createElement("h3");
+        heading.textContent = `参考反馈（共 ${item.sources.length} 条）`;
+        sources.append(heading);
+        if (item.sources.length) sources.append(sourceCard(item.sources[0]));
+        if (item.sources.length > 1) {
+            const details = document.createElement("details");
+            const summary = document.createElement("summary");
+            summary.textContent = `展开其余 ${item.sources.length - 1} 条来源`;
+            details.append(summary);
+            for (const source of item.sources.slice(1)) details.append(sourceCard(source));
+            sources.append(details);
+        }
+        card.append(label, input, ids, sources);
+        reviewFields.push({item, input});
+        return card;
+    });
+    $("#review-items").replaceChildren(...cards);
+    $("#review-editor").hidden = false;
+    $("#report-preview").hidden = true;
+    editingReview = true;
+    controls();
+    reviewControls();
+    reviewFields[0]?.input.focus();
+}
+
+$("#edit-suggestions").addEventListener("click", async () => {
+    if ($("#edit-suggestions").disabled) return;
+    const target = jobUrl();
+    loadingReview = true;
+    controls();
+    reviewControls();
+    error("");
+    try {
+        const detail = await api(`${target}/review`);
+        if (target !== jobUrl()) return;
+        reviewState = detail;
+        if (!detail.editable) throw new Error(detail.locked_reason || "此报告目前无法编辑。");
+        renderReview(detail);
+    } catch (failure) {
+        if (target === jobUrl()) error(failure.message);
+    } finally {
+        if (target === jobUrl()) {
+            loadingReview = false;
+            controls();
+            reviewControls();
+        }
+    }
+});
+
+$("#cancel-review").addEventListener("click", () => {
+    if (savingReview) return;
+    closeReview();
+    $("#edit-suggestions").focus();
+});
+
+$("#restore-suggestions").addEventListener("click", () => {
+    if (savingReview) return;
+    for (const {item, input} of reviewFields) input.value = item.original_text;
+    reviewControls();
+});
+
+$("#review-editor").addEventListener("submit", async event => {
+    event.preventDefault();
+    if (!editingReview || savingReview || !reviewDirty()) return;
+    const target = jobUrl();
+    savingReview = true;
+    reviewControls();
+    error("");
+    try {
+        const report = await post(`${target}/review`, {version: reviewDetail.version,
+            suggestions: reviewFields.map(({item, input}) => ({id: item.id, text: input.value}))});
+        if (target !== jobUrl()) return;
+        closeReview();
+        applyReport(report);
+        $("#edit-suggestions").focus();
+    } catch (failure) {
+        if (target === jobUrl()) error(failure.message);
+    } finally {
+        if (target === jobUrl()) {
+            savingReview = false;
+            controls();
+            reviewControls();
+        }
+    }
+});
+
+$("#download-md").addEventListener("click", event => {
+    if (!editingReview && !loadingReview && !savingReview) return;
+    event.preventDefault();
+    error("请先保存或取消建议修改，再下载 Markdown。");
+});
+
 function showPush(data = {}) {
+    lastPush = data;
     const button = $("#push-feishu");
     pushUnknown = data.status === "unknown";
     button.disabled = !data.available || data.status === "sent";
@@ -71,36 +271,54 @@ function showPush(data = {}) {
     const message = data.status === "sent" ? `推送成功 · ${data.total_parts || 1} 段 · ${new Date(data.sent_at).toLocaleString()}` : data.status === "unknown" ? `${progress}下一段发送结果未知，请先检查群消息，避免重复推送。` : progress + (data.last_error || data.reason || "");
     $("#push-status").textContent = message;
     $("#push-status").hidden = !message;
+    reviewControls();
 }
 
 $("#push-feishu").addEventListener("click", async () => {
     const target = jobUrl();
     const button = $("#push-feishu");
     if (button.disabled) return;
+    pushing = true;
+    controls();
+    reviewControls();
     button.disabled = true;
     button.textContent = "推送中…";
     $("#push-status").textContent = "正在准备明细并推送报告，请稍候。";
     $("#push-status").hidden = false;
     error("");
     try {
-        const data = await post(`${target}/push/feishu`, {retry_unknown: pushUnknown});
-        if (target === jobUrl()) showPush(data);
+        const data = await post(`${target}/push/feishu`, {retry_unknown: pushUnknown, report_version: reviewState?.version});
+        if (target !== jobUrl()) return;
+        showPush(data);
+        if (reviewState) reviewState = {...reviewState, editable: false, locked_reason: "此报告已开始推送，建议内容已锁定。"};
+        const report = await api(`${target}/report`);
+        if (target === jobUrl()) applyReport(report);
     } catch (failure) {
         if (target !== jobUrl()) return;
         error(failure.message);
-        try { showPush((await api(`${target}/report`)).feishu); }
+        try {
+            const report = await api(`${target}/report`);
+            if (target === jobUrl()) applyReport(report);
+        }
         catch (_) { button.textContent = "请检查群消息"; }
+    } finally {
+        pushing = false;
+        if (target === jobUrl()) {
+            controls();
+            reviewControls();
+        }
     }
 });
 function dates() { return {start: $("#start").value, end: $("#end").value, confirmed: $("#confirm-coverage").checked}; }
 
 function controls() {
-    $("#upload-button").disabled = busy || uploading;
-    $("#file").disabled = busy || uploading;
-    $("#start").disabled = busy;
-    $("#end").disabled = busy;
-    $("#confirm-coverage").disabled = busy;
-    $("#generate-button").disabled = busy || uploading || filePending || reportComplete || !selection?.ready;
+    const reviewing = editingReview || loadingReview || savingReview || pushing;
+    $("#upload-button").disabled = busy || uploading || reviewing;
+    $("#file").disabled = busy || uploading || reviewing;
+    $("#start").disabled = busy || reviewing;
+    $("#end").disabled = busy || reviewing;
+    $("#confirm-coverage").disabled = busy || reviewing;
+    $("#generate-button").disabled = busy || uploading || reviewing || filePending || reportComplete || !selection?.ready;
     $("#generate-button").textContent = reportComplete ? "报告已生成" : busy ? "生成中…" : "生成报告 ↗";
     $("#job-spinner").hidden = !busy;
 }
@@ -188,6 +406,7 @@ async function checkSelection() {
 async function loadUpload(metadata) {
     run = metadata.run;
     reportComplete = false;
+    resetReview();
     $("#content-section").hidden = false;
     $("#report-form").hidden = false;
     $("#file-summary").textContent = `${metadata.total.toLocaleString()} 行 · ${metadata.valid.toLocaleString()} 条待分析 · ${metadata.excluded.toLocaleString()} 条排除`;
@@ -216,7 +435,7 @@ for (const type of ["dragleave", "drop"]) $("#upload-zone").addEventListener(typ
 
 $("#upload-form").addEventListener("submit", async event => {
     event.preventDefault();
-    if (busy || uploading) return;
+    if (busy || uploading || editingReview || loadingReview || savingReview || pushing) return;
     // Capture before disabling controls: disabled file inputs are omitted from FormData.
     const formData = new FormData(event.target);
     uploading = true;
@@ -285,9 +504,10 @@ async function displayJob(data) {
                 (finalSelection.semantic_excluded_in_period ? `另排除 ${finalSelection.semantic_excluded_in_period} 条内容不明确或无法理解的反馈，原文与原因见 Excel“排除反馈明细”。` : "") +
                 (finalSelection.abusive_excluded_in_period ? `已剔除 ${finalSelection.abusive_excluded_in_period} 条含辱骂内容的反馈，不计入统计，也不导出。` : "");
         }
-        const report = await api(`${jobUrl()}/report`);
-        showPush(report.feishu);
-        $("#report-preview").innerHTML = report.html;
+        const target = jobUrl();
+        const report = await api(`${target}/report`);
+        if (target !== jobUrl()) return;
+        applyReport(report);
         $("#report-preview").hidden = false;
         $("#report-empty").hidden = true;
         switchTab("report");
@@ -306,7 +526,7 @@ async function pollJob() {
 
 $("#report-form").addEventListener("submit", async event => {
     event.preventDefault();
-    if (busy || uploading || filePending || reportComplete || !selection?.ready) return;
+    if (busy || uploading || editingReview || loadingReview || savingReview || pushing || filePending || reportComplete || !selection?.ready) return;
     busy = true;
     controls();
     $("#job-status").hidden = false;
@@ -317,6 +537,7 @@ $("#report-form").addEventListener("submit", async event => {
     try {
         const data = await post(`${runUrl()}/reports`, dates());
         job = data.id;
+        resetReview();
         $("#report-preview").replaceChildren();
         $("#report-preview").hidden = true;
         $("#report-empty").hidden = false;

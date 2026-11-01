@@ -11,7 +11,7 @@ class MarkdownChangeTests(TestCase):
             with self.subTest(current=current, previous=previous):
                 self.assertEqual(change(current, previous), expected)
 
-    def test_report_overview_and_module_table_share_arrow_format(self):
+    def test_module_table_combines_count_share_and_omits_change_unit(self):
         snapshot = {"selection": {"periods": {"current": {"start": "2026-10-19", "end": "2026-10-25"},
                     "previous": {"start": "2026-10-12", "end": "2026-10-18"}}},
             "total": 15, "previous_total": 15, "suggestion_feedback_count": 0,
@@ -19,7 +19,8 @@ class MarkdownChangeTests(TestCase):
                         {"label": "账号问题", "count": 5, "previous": 10, "share": 1/3, "flagged": False}]}
         text = render_markdown(snapshot, {"suggestions": [], "issues": {}}, {"name": "测试游戏"})
         self.assertIn("变化：持平（0.0%）", text)
-        self.assertIn("↑ 5 条（+100.0%）", text)
-        self.assertIn("↓ 5 条（-50.0%）", text)
+        self.assertIn("| 俱乐部 | 10（66.7%） | 5 | ↑ 5（+100.0%） |", text)
+        self.assertIn("| 账号问题 | 5（33.3%） | 10 | ↓ 5（-50.0%） |", text)
+        self.assertIn("| :--- | :--- | :--- | :--- | :--- |", text)
         self.assertNotIn("增加", text)
         self.assertNotIn("减少", text)

@@ -8,6 +8,7 @@ from .analysis import analyze_report
 from .exports.markdown import render_markdown
 from .exports.excel import write_excel
 from .storage import read_csv, atomic_json
+from .report_review import initialize as initialize_review
 
 
 def prepare_selection(folder, config, start, end, confirmed=False):
@@ -42,6 +43,7 @@ def run_report(folder, config, start, end, confirmed, job_id, progress, should_s
     (output / "feedback_details.tmp.xlsx").replace(output / "feedback_details.xlsx")
     (output / "report.tmp.md").replace(output / "report.md")
     atomic_json(output / "config_snapshot.json", config)
+    initialize_review(output, snapshot, analysis, markdown)
     return {"total": snapshot["total"], "previous_total": snapshot["previous_total"],
             "suggestions": len(analysis["suggestions"]),
             "suggestion_feedback_count": snapshot["suggestion_feedback_count"], "selection": info}
