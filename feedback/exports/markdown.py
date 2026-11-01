@@ -18,6 +18,10 @@ def change(current, previous):
     return "持平（0.0%）" if not delta else f"{'↑' if delta > 0 else '↓'} {abs(delta):,} 条（{delta / previous:+.1%}）"
 
 
+def table_change(current, previous):
+    return change(current, previous).replace(" 条", "")
+
+
 def render_markdown(snapshot, analysis, config):
     selection = snapshot["selection"]
     current, previous = (selection["periods"][key] for key in ("current", "previous"))
@@ -25,8 +29,7 @@ def render_markdown(snapshot, analysis, config):
         f"报告期间：{current['start']} 至 {current['end']}（含首尾日期）",
         f"对比期间：{previous['start']} 至 {previous['end']}（上周相同日期）", "",
         "## 反馈概况", "",
-        f"本期有效反馈：{snapshot['total']:,} 条；上周同期：{snapshot['previous_total']:,} 条。",
-        f"变化：{change(snapshot['total'], snapshot['previous_total'])}。", "",
+        f"本期有效反馈：{snapshot['total']:,} 条；上周同期：{snapshot['previous_total']:,} 条。" + f"变化：{change(snapshot['total'], snapshot['previous_total'])}。", "",
         # f"其中原标签为建议的有效反馈：{snapshot['suggestion_feedback_count']:,} 条。", ""
         ]
     # if selection.get("semantic_excluded_in_period"):
@@ -35,20 +38,17 @@ def render_markdown(snapshot, analysis, config):
     lines += ["## 有价值的玩家建议", ""]
     if not analysis["suggestions"]:
         lines.append("本期未发现明确、具体的产品改进建议。")
-    users = ({str(row["反馈ID"]): str(row["用户ID"]).strip()
-              for row in snapshot["current"].fillna("").to_dict("records")} if analysis["suggestions"] else {})
+    feedback_ids_in_current = ({str(row["反馈ID"])
+                                for row in snapshot["current"].fillna("").to_dict("records")}
+                               if analysis["suggestions"] else set())
     for index, item in enumerate(analysis["suggestions"], 1):
-        if any(fid not in users for fid in item["feedback_ids"]):
+        if any(fid not in feedback_ids_in_current for fid in item["feedback_ids"]):
             raise ValueError("建议引用了不属于本期有效反馈的记录。")
-        user_ids = list(dict.fromkeys(users[fid] for fid in item["feedback_ids"] if users[fid]))
-        missing = any(not users[fid] for fid in item["feedback_ids"])
-        attribution = "、".join(user_ids) if user_ids else "未提供"
-        if missing and user_ids:
-            attribution += "；另有用户 ID 未提供"
-        lines.append(f"{index}. {safe(item['text'])}（用户 ID：{safe(attribution)}）")
+        feedback_ids = "、".join(dict.fromkeys(item["feedback_ids"]))
+        lines.append(f"{index}. {safe(item['text'])}（反馈 ID：{safe(feedback_ids)}）")
     lines += ["", "## 反馈统计", "",
-        "| 反馈模块 | 本期数量 | 本期占比 | 上周同期数量 | 变化 | 重点问题分析 |",
-        "| :--- | ---: | ---: | ---: | :--- | :--- |"]
+        "| 反馈模块 | 本期数量 | 上周同期数量 | 变化 | 重点问题分析 |",
+        "| :--- | :--- | :--- | :--- | :--- |"]
     for module in snapshot["modules"]:
         notes = []
         for issue in analysis["issues"].get(module["label"], []):
@@ -58,7 +58,7 @@ def render_markdown(snapshot, analysis, config):
         remaining = module["count"] - sum(item["count"] for item in analysis["issues"].get(module["label"], []))
         if notes and remaining:
             notes.append(f"另有 {remaining} 条，详见反馈明细。")
-        lines.append(f"| {safe(module['label'])} | {module['count']} | {module['share']:.1%} | {module['previous']} | {change(module['count'], module['previous'])} | {'<br>'.join(notes) or '—'} |")
+        lines.append(f"| {safe(module['label'])} | {module['count']}（{module['share']:.1%}） | {module['previous']} | {table_change(module['count'], module['previous'])} | {'<br>'.join(notes) or '—'} |")
     # lines += ["", "[下载完整翻译明细](feedback_details.xlsx)", "", "## 统计说明", "",
     #     "- 每条有效反馈只计入一个主标签；占比以本期有效反馈数为分母。",
     #     "- 对比期间为报告日期向前移动七天；超过七天的期间可能重叠，处理时会去重。",
