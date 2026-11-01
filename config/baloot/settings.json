@@ -14,6 +14,15 @@
   "feishu": {
     "enabled": true,
     "webhook_env": "FEISHU_BALOOT_WEBHOOK",
+    "card": {
+      "table_column_widths": {
+        "反馈模块": "12%",
+        "本期数量": "16%",
+        "上周同期数量": "16%",
+        "变化": "18%",
+        "重点问题分析": "38%"
+      }
+    },
     "spreadsheet": {
       "enabled": true,
       "url": "https://aozalj10qx.feishu.cn/wiki/HmaVwb2wAixEsbka6rDcACGznob",

@@ -14,9 +14,9 @@ from urllib.request import Request, build_opener, HTTPRedirectHandler
 from urllib.error import HTTPError, URLError
 
 from .storage import atomic_json
-from . import feishu_sheets
+from . import feishu_cards, feishu_sheets
 
-FORMAT = "card-markdown-v1"
+FORMAT = "card-native-table-v2"
 MAX_BODY_BYTES = 18000  # Below Feishu's 20 KB limit, including JSON and signatures.
 
 
@@ -54,7 +54,8 @@ def state(folder, config):
     # An interrupted process may have sent the message before saving success.
     if saved.get("status") == "sending":
         saved = {**saved, "status": "unknown"}
-    if saved.get("status") == "sent" and saved.get("format") != FORMAT:
+    finished_legacy_resume = saved.get("format") == "card-markdown-v1" and saved.get("resumed_legacy_send") is True
+    if saved.get("status") == "sent" and saved.get("format") != FORMAT and not finished_legacy_resume:
         saved = {"status": "ready", "reason": "此前使用旧版消息格式，可推送新版完整报告卡片。"}
     if sheet_settings and saved.get("status") == "sent" and not saved.get("sheet_url"):
         saved = {"status": "ready", "reason": "此前卡片未包含在线明细，可推送明细页签及新版卡片。"}
@@ -74,23 +75,27 @@ def report_text(folder, detail_url=None):
     text, count = re.subn(r"\[[^\]]*\]\(feedback_details\.xlsx\)", lambda _: replacement, text)
     if detail_url and not count:
         text += "\n\n" + replacement
-    # The card Markdown component does not support arbitrary HTML.
-    return re.sub(r"<br\s*/?>", "；", text, flags=re.I).strip()
+    # Preserve cell breaks until the native-table renderer converts them to newlines.
+    return text.strip()
 
 
-def card_payload(title, text):
-    return {"msg_type": "interactive", "card": {
-        "schema": "2.0",
-        "header": {"title": {"tag": "plain_text", "content": title}, "template": "blue"},
-        "body": {"elements": [{"tag": "markdown", "content": text}]}}}
+def card_payload(title, text, widths=None, *, legacy=False):
+    if legacy:
+        # Finish accepted parts of an older send with its original byte budget and layout.
+        return {"msg_type": "interactive", "card": {
+            "schema": "2.0",
+            "header": {"title": {"tag": "plain_text", "content": title}, "template": "blue"},
+            "body": {"elements": [{"tag": "markdown", "content": text}]}}}
+    return feishu_cards.card_payload(title, text, widths)
 
 
-def report_parts(text, title):
+def report_parts(text, title, widths=None, *, legacy=False):
     """Split paragraphs and table rows; repeat headers on continued tables."""
     def fits(value):
-        payload = card_payload(title + "（999999/999999）", value)
+        payload = card_payload(title + "（999999/999999）", value, widths, legacy=legacy)
         payload.update(timestamp="9" * 20, sign="x" * 44)
-        return len(json.dumps(payload, ensure_ascii=False).encode()) <= MAX_BODY_BYTES
+        tables = sum(element["tag"] == "table" for element in payload["card"]["body"]["elements"])
+        return tables <= feishu_cards.MAX_TABLES and len(json.dumps(payload, ensure_ascii=False).encode()) <= MAX_BODY_BYTES
 
     parts, current = [], ""
 
@@ -205,21 +210,36 @@ def push(folder, config, retry_unknown=False):
         return saved
     if saved.get("status") == "unknown" and not retry_unknown:
         raise ValueError("上次发送结果未知，请先检查群消息；为避免重复，本报告暂不再次发送。")
+    widths = feishu_cards.column_widths(config)
+    # Pin layout across partial sends so a later config edit cannot repeat accepted parts.
+    if saved.get("format") == FORMAT and (saved.get("sent_parts", 0) or saved.get("status") == "unknown"):
+        widths = saved.get("table_column_widths", widths)
+    legacy = saved.get("format") == "card-markdown-v1" and saved.get("sent_parts", 0) > 0
+    send_format = "card-markdown-v1" if legacy else FORMAT
     sheet = feishu_sheets.sync(folder, config)
     text = report_text(folder, sheet["url"] if sheet else None)
+    if legacy:
+        text = re.sub(r"<br\s*/?>", "；", text, flags=re.I)
     title = re.sub(r"^#+\s*", "", text.splitlines()[0])[:100]
-    parts = report_parts(text, title)
-    digest = hashlib.sha256(json.dumps([FORMAT, parts], ensure_ascii=False).encode()).hexdigest()
+    parts = report_parts(text, title, widths, legacy=legacy)
+    fingerprint = [send_format, parts] if legacy else [send_format, widths, parts]
+    digest = hashlib.sha256(json.dumps(fingerprint, ensure_ascii=False).encode()).hexdigest()
+    if legacy and saved.get("digest") != digest:
+        raise ValueError("此报告已推送部分旧版消息，但报告内容或明细链接已变更。请恢复原内容后重试，避免重复发送。")
     completed = saved.get("sent_parts", 0) if saved.get("digest") == digest else 0
     path = folder / "feishu_push.json"
-    progress = {"format": FORMAT, "digest": digest, "sent_parts": completed, "total_parts": len(parts)}
+    progress = {"format": send_format, "digest": digest, "sent_parts": completed, "total_parts": len(parts)}
+    if legacy:
+        progress["resumed_legacy_send"] = True
+    else:
+        progress["table_column_widths"] = widths
     if sheet:
         progress["sheet_url"] = sheet["url"]
     for index in range(completed, len(parts)):
         if index > completed:
             time.sleep(0.65)
         numbered_title = title if len(parts) == 1 else f"{title}（{index + 1}/{len(parts)}）"
-        payload = card_payload(numbered_title, parts[index])
+        payload = card_payload(numbered_title, parts[index], widths, legacy=legacy)
         if secret:
             timestamp = str(int(time.time()))
             signature = hmac.new(f"{timestamp}\n{secret}".encode(), b"", hashlib.sha256).digest()

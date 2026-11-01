@@ -12,6 +12,7 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from feedback.feishu import FORMAT, MAX_BODY_BYTES, card_payload, report_parts, report_text, push, state
+from feedback.feishu_cards import column_widths
 
 
 class FeishuTests(TestCase):
@@ -115,10 +116,67 @@ class FeishuTests(TestCase):
         text = "# 报告\n\n| 模块 | 说明 |\n| --- | --- |\n| 支付 | 第一行<br>第二行 |\n\n## 统计说明\n\n- 完整统计说明。"
         (self.folder / "report.md").write_text(text, encoding="utf-8")
         markdown = report_text(self.folder)
-        self.assertIn("| 支付 | 第一行；第二行 |", markdown)
+        self.assertIn("| 支付 | 第一行<br>第二行 |", markdown)
         self.assertIn("## 统计说明", markdown)
         self.assertIn("完整统计说明。", markdown)
         self.assertEqual(report_parts(markdown, "报告"), [markdown])
+        elements = card_payload("报告", markdown)["card"]["body"]["elements"]
+        self.assertEqual([item["tag"] for item in elements], ["markdown", "table", "markdown"])
+        self.assertEqual(elements[1]["rows"][0]["col_1"], "第一行\n第二行")
+        self.assertIn("完整统计说明。", elements[-1]["content"])
+
+    def test_push_uses_configured_widths_and_preserves_report_values(self):
+        text = ("# 报告\n\n1. 增加功能（反馈 ID：00012）\n\n"
+                "| 反馈模块 | 本期数量 | 上周同期数量 | 变化 | 重点问题分析 |\n"
+                "| :--- | :--- | :--- | :--- | :--- |\n"
+                "| 账号问题 | 237（43.5%） | 233 | ↑ 4（+2.1%） | 第一项（反馈 ID：00012）<br>第二项 |")
+        (self.folder / "report.md").write_text(text, encoding="utf-8")
+        self.config["feishu"]["card"] = {"table_column_widths": {"重点问题分析": "50%", "反馈模块": "100px"}}
+        with patch("feedback.feishu.send_payload", return_value={"code": 0}) as sender:
+            push(self.folder, self.config)
+        elements = sender.call_args.args[1]["card"]["body"]["elements"]
+        self.assertIn("反馈 ID：00012", elements[0]["content"])
+        table = elements[1]
+        self.assertEqual(sender.call_args.args[1]["card"]["config"]["width_mode"], "fill")
+        columns = {column["display_name"]: column for column in table["columns"]}
+        self.assertEqual(columns["重点问题分析"]["width"], "50%")
+        self.assertEqual(columns["反馈模块"]["width"], "100px")
+        self.assertTrue(all(column["horizontal_align"] == "left" for column in table["columns"]))
+        self.assertEqual(table["header_style"]["text_align"], "left")
+        self.assertEqual(table["row_height"], "auto")
+        self.assertEqual(table["rows"][0]["col_1"], "237（43.5%）")
+        self.assertEqual(table["rows"][0]["col_4"], "第一项（反馈 ID：00012）\n第二项")
+        self.assertEqual((self.folder / "report.md").read_text(encoding="utf-8"), text)
+
+    def test_invalid_width_is_rejected_before_uploading_details_or_sending(self):
+        for width in ("79px", "601px", "0%", "101%", "120", 120):
+            self.config["feishu"]["card"] = {"table_column_widths": {"本期数量": width}}
+            with self.subTest(width=width), patch("feedback.feishu_sheets.sync") as sheets, patch("feedback.feishu.send_payload") as sender:
+                with self.assertRaises(ValueError):
+                    push(self.folder, self.config)
+                sheets.assert_not_called()
+                sender.assert_not_called()
+        for width in ("80px", "600px", "1%", "100%", "auto"):
+            self.config["feishu"]["card"]["table_column_widths"]["本期数量"] = width
+            self.assertEqual(column_widths(self.config)["本期数量"], width)
+
+    def test_markdown_fenced_tables_are_not_converted_and_escaped_pipes_are_preserved(self):
+        text = "```md\n| 模块 | 说明 |\n| --- | --- |\n| 示例 | 内容 |\n```"
+        elements = card_payload("报告", text)["card"]["body"]["elements"]
+        self.assertEqual(elements, [{"tag": "markdown", "content": text}])
+        text = "| 模块 | 说明 |\n| --- | --- |\n| 支付 | A\\|B &#124; C |"
+        table = card_payload("报告", text)["card"]["body"]["elements"][0]
+        self.assertEqual(table["rows"][0]["col_1"], "A\\|B &#124; C")
+
+    def test_multiple_tables_respect_five_table_limit_without_losing_rows(self):
+        text = "\n\n".join(f"| 模块 | 说明 |\n| --- | --- |\n| row-{i} | 内容 |" for i in range(7))
+        parts = report_parts(text, "报告")
+        self.assertEqual(len(parts), 2)
+        for part in parts:
+            elements = card_payload("报告", part)["card"]["body"]["elements"]
+            self.assertLessEqual(sum(element["tag"] == "table" for element in elements), 5)
+        for i in range(7):
+            self.assertEqual("\n".join(parts).count(f"row-{i}"), 1)
 
     def test_large_table_splits_by_row_with_headers_and_no_missing_rows(self):
         rows = [f"| row-{index:03d} | {'内容' * 130} |\n" for index in range(80)]
@@ -176,3 +234,52 @@ class FeishuTests(TestCase):
         with patch("feedback.feishu.send_payload", return_value={"code": 0}) as sender:
             push(self.folder, self.config)
         sender.assert_called_once()
+
+    def test_old_markdown_card_can_be_manually_upgraded_to_configured_table(self):
+        (self.folder / "feishu_push.json").write_text('{"status":"sent","format":"card-markdown-v1"}')
+        self.assertEqual(state(self.folder, self.config)["status"], "ready")
+        with patch("feedback.feishu.send_payload", return_value={"code": 0}) as sender:
+            self.assertEqual(push(self.folder, self.config)["format"], FORMAT)
+        sender.assert_called_once()
+
+    def test_retry_keeps_original_widths_after_config_change(self):
+        text = "\n\n".join(f"| 模块 | 重点问题分析 |\n| --- | --- |\n| row-{i} | {'内容' * 130} |" for i in range(7))
+        (self.folder / "report.md").write_text(text, encoding="utf-8")
+        self.config["feishu"]["card"] = {"table_column_widths": {"重点问题分析": "50%"}}
+        with patch("feedback.feishu.send_payload", side_effect=[{"code": 0}, {"code": 11232}]), patch("feedback.feishu.time.sleep"):
+            with self.assertRaises(ValueError):
+                push(self.folder, self.config)
+        self.config["feishu"]["card"]["table_column_widths"]["重点问题分析"] = "60%"
+        with patch("feedback.feishu.send_payload", return_value={"code": 0}) as sender:
+            push(self.folder, self.config)
+        sender.assert_called_once()
+        self.assertIn("（2/2）", sender.call_args.args[1]["card"]["header"]["title"]["content"])
+        tables = [item for item in sender.call_args.args[1]["card"]["body"]["elements"] if item["tag"] == "table"]
+        self.assertTrue(all(table["columns"][1]["width"] == "50%" for table in tables))
+
+    def test_rejected_first_part_allows_corrected_layout(self):
+        (self.folder / "report.md").write_text("| 模块 | 重点问题分析 |\n| --- | --- |\n| 支付 | 内容 |", encoding="utf-8")
+        self.config["feishu"]["card"] = {"table_column_widths": {"重点问题分析": "50%"}}
+        with patch("feedback.feishu.send_payload", return_value={"code": 10002}):
+            with self.assertRaises(ValueError):
+                push(self.folder, self.config)
+        self.config["feishu"]["card"]["table_column_widths"]["重点问题分析"] = "60%"
+        with patch("feedback.feishu.send_payload", return_value={"code": 0}) as sender:
+            push(self.folder, self.config)
+        table = sender.call_args.args[1]["card"]["body"]["elements"][0]
+        self.assertEqual(table["columns"][1]["width"], "60%")
+
+    def test_partial_old_markdown_send_finishes_without_repeating_accepted_parts(self):
+        text = "# 报告\n\n" + "\n\n".join(f"段落{i} " + "反馈" * 2000 for i in range(4))
+        (self.folder / "report.md").write_text(text, encoding="utf-8")
+        parts = report_parts(text, "报告", legacy=True)
+        digest = hashlib.sha256(json.dumps(["card-markdown-v1", parts], ensure_ascii=False).encode()).hexdigest()
+        (self.folder / "feishu_push.json").write_text(json.dumps({
+            "status": "partial", "format": "card-markdown-v1", "digest": digest,
+            "sent_parts": 1, "total_parts": len(parts)}))
+        with patch("feedback.feishu.send_payload", return_value={"code": 0}) as sender, patch("feedback.feishu.time.sleep"):
+            result = push(self.folder, self.config)
+            self.assertEqual(result["status"], "sent")
+            self.assertEqual(push(self.folder, self.config)["status"], "sent")
+        self.assertEqual(sender.call_count, len(parts) - 1)
+        self.assertEqual(sender.call_args_list[0].args[1]["card"]["body"]["elements"][0]["content"], parts[1])

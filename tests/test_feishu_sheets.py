@@ -289,7 +289,8 @@ class SheetTests(BaseTest):
         with patch("feedback.feishu.credentials", return_value=("https://example", "")), patch(
                 "feedback.feishu.send_payload", return_value={"code": 0}) as sender:
             result = feishu.push(self.folder, self.config)
-            text = sender.call_args.args[1]["card"]["body"]["elements"][0]["content"]
+            elements = sender.call_args.args[1]["card"]["body"]["elements"]
+            text = "\n".join(element["content"] for element in elements if element["tag"] == "markdown")
             self.assertIn("打开完整反馈明细", text)
             self.assertIn("sheet=tab1", text)
             self.assertEqual(result["sheet"]["status"], "complete")
