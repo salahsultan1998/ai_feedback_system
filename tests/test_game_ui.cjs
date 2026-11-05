@@ -6,10 +6,14 @@ const html = fs.readFileSync("templates/game.html", "utf8");
 const script = fs.readFileSync("static/js/game.js", "utf8");
 
 function boot(options = {}) {
+    const fixtureOptions = options;
     const created = [];
     function element() {
+        let disabled = false;
         const node = {
-            hidden: true, disabled: false, value: "", files: [], checked: false,
+            hidden: true, value: "", files: [], checked: false,
+            get disabled() { return disabled; },
+            set disabled(value) { disabled = Boolean(value); },
             dataset: {}, attributes: {}, listeners: {}, children: [], content: "test-token",
             classList: {toggle() {}, add() {}, remove() {}},
             addEventListener(type, fn) { this.listeners[type] = fn; },
@@ -25,7 +29,8 @@ function boot(options = {}) {
     }
     const nodes = new Map([...html.matchAll(/id="([^"]+)"/g)].map(m => ["#" + m[1], element()]));
     for (const selector of ['meta[name="csrf-token"]', "#data-table thead", "#data-table tbody", ".table-scroll"]) nodes.set(selector, element());
-    nodes.get("#workspace").dataset.game = "baloot";
+    const game = options.game || "baloot";
+    nodes.get("#workspace").dataset.game = game;
     const calls = [];
     const requests = [], windowListeners = {};
     const server = {pushStatus: options.pushStatus || "unknown", version: "revision-1", html: "<h1>Report</h1>",
@@ -53,11 +58,26 @@ function boot(options = {}) {
     function reportResponse() {
         return {html:server.html, feishu:{available:true,status:server.pushStatus,sent_at:"2026-10-26T00:00:00+00:00"}, review:review(), bug_review:bugReview()};
     }
-    let url = "http://localhost/games/baloot?upload=old-upload";
+    let currentUrl = options.url || `http://localhost/games/${game}?upload=old-upload`;
+    const location = {
+        get href() { return currentUrl; },
+        set href(value) { currentUrl = new URL(String(value), currentUrl).href; },
+        reload() { this.reloaded = true; }
+    };
+    const stored = new Map();
+    const sessionStorage = options.sessionStorage || {
+        getItem(key) { return stored.get(key) ?? null; },
+        setItem(key, value) { stored.set(key, String(value)); },
+        removeItem(key) { stored.delete(key); }
+    };
+    const timers = new Map();
+    let nextTimer = 0;
     const context = vm.createContext({
-        URL, console, setTimeout: () => 1, clearTimeout() {},
-        window: { location: {href: url, reload() {}}, addEventListener(type, fn) { windowListeners[type] = fn; } },
-        history: {replaceState(a, b, next) { url = String(next); }},
+        URL, console,
+        setTimeout(callback, delay) { timers.set(++nextTimer, {callback, delay}); return nextTimer; },
+        clearTimeout(id) { timers.delete(id); },
+        window: { location, sessionStorage, addEventListener(type, fn) { windowListeners[type] = fn; } },
+        history: {replaceState(a, b, next) { location.href = String(next); }},
         document: {
             querySelector(selector) { assert(nodes.has(selector), "Missing DOM selector " + selector); return nodes.get(selector); },
             createElement: element
@@ -66,8 +86,13 @@ function boot(options = {}) {
         fetch: async (path, options) => {
             calls.push(path);
             requests.push({path, options});
+            if (fixtureOptions.respond) {
+                const response = await fixtureOptions.respond(path, options, server);
+                if (response !== undefined) return response;
+            }
             let data;
-            if (path.includes("/preview?")) data = {columns: ["反馈ID"], rows: [["0001"]], page: 1, page_size: 50, total: 1};
+            if (path === "/api/jobs/active") data = {job:null};
+            else if (path.includes("/preview?")) data = {columns: ["反馈ID"], rows: [["0001"]], page: 1, page_size: 50, total: 1};
             else if (path.endsWith("/selection")) data = {
                 ready: true, periods: {previous: {start:"2026-10-12",end:"2026-10-15"}},
                 current_count: 1, previous_count: 1, selected_count: 2, outside_count: 0,
@@ -114,14 +139,24 @@ function boot(options = {}) {
         }
     });
     vm.runInContext(script, context);
-    return {context, nodes, calls, requests, server, created, windowListeners, url:()=>url};
+    const ready = vm.runInContext("typeof workspaceReady === 'undefined' ? Promise.resolve() : workspaceReady", context);
+    async function runTimer() {
+        const entry = timers.entries().next().value;
+        assert(entry, "A polling timer is scheduled");
+        timers.delete(entry[0]);
+        await entry[1].callback();
+    }
+    return {context, nodes, calls, requests, server, created, windowListeners, ready, sessionStorage, timers, runTimer,
+        url:()=>location.href};
 }
 
-(async () => {
-    const {context, nodes, calls, url} = boot();
+async function testUI() {
+    const app = boot();
+    await app.ready;
+    const {context, nodes, calls, url} = app;
     const get = id => nodes.get("#" + id);
     assert(!url().includes("upload="), "Old upload link removed on initial load");
-    assert.equal(calls.length, 0, "Refresh must not restore uploaded data");
+    assert.deepEqual(calls, ["/api/jobs/active"], "A fresh workspace checks for active work without restoring unrelated uploads");
     assert(get("upload-form").wasReset && get("report-form").wasReset);
     await get("upload-form").listeners.submit({preventDefault(){},target:get("upload-form")});
     assert.equal(get("content-section").hidden,false);
@@ -170,10 +205,12 @@ function boot(options = {}) {
     assert.equal(get("generate-button").disabled,false);
     assert.equal(get("generate-button").textContent,"生成报告 ↗");
     const fresh = boot();
-    assert.equal(fresh.calls.length,0);
+    await fresh.ready;
+    assert.deepEqual(fresh.calls,["/api/jobs/active"]);
     assert.equal(fresh.nodes.get("#content-section").hidden,true);
 
     const previewApp = boot();
+    await previewApp.ready;
     const fetchPreview = previewApp.context.fetch;
     const longInfo = "附加信息".repeat(31);
     const longText = "玩家原文".repeat(31);
@@ -192,6 +229,7 @@ function boot(options = {}) {
     assert.equal(previewRows[1].children[2].textContent,longText,"Other long source columns stay plain text");
 
     const reviewApp = boot({pushStatus:"ready"});
+    await reviewApp.ready;
     const n = id => reviewApp.nodes.get("#" + id);
     const fields = () => vm.runInContext("reviewFields", reviewApp.context);
     const dirty = () => vm.runInContext("reviewDirty()", reviewApp.context);
@@ -258,6 +296,7 @@ function boot(options = {}) {
     assert.equal(reviewApp.requests.filter(item=>item.path.endsWith("/reports")).length,1,"Editing never generates another AI report");
 
     const bugApp = boot({pushStatus:"ready"});
+    await bugApp.ready;
     const b = id => bugApp.nodes.get("#"+id);
     const bugFields = () => vm.runInContext("reviewFields", bugApp.context);
     const change = (input, checked) => {input.checked=checked; input.listeners.change();};
@@ -332,6 +371,7 @@ function boot(options = {}) {
 
     for (const options of [{bugAvailable:false},{bugs:[]}]) {
         const old = boot({pushStatus:"ready",...options});
+        await old.ready;
         await old.nodes.get("#upload-form").listeners.submit({preventDefault(){},target:old.nodes.get("#upload-form")});
         await old.nodes.get("#report-form").listeners.submit({preventDefault(){}});
         assert.equal(old.nodes.get("#edit-bugs").disabled,true);
@@ -340,6 +380,7 @@ function boot(options = {}) {
 
     for (const button of ["edit-suggestions", "edit-bugs"]) {
         const locked = boot({pushStatus:"ready"});
+        await locked.ready;
         const node = id => locked.nodes.get("#" + id);
         await node("upload-form").listeners.submit({preventDefault(){},target:node("upload-form")});
         await node("report-form").listeners.submit({preventDefault(){}});
@@ -354,4 +395,7 @@ function boot(options = {}) {
         assert.equal(node("start").disabled,false);
     }
     console.log("UI interactions passed: suggestion/BUG editing, original sources, source exclusions, unique counts, restore/cancel, revisions and push locking.");
-})().catch(error => {console.error(error);process.exitCode=1;});
+}
+
+module.exports = {boot};
+if (require.main === module) testUI().catch(error => {console.error(error);process.exitCode=1;});

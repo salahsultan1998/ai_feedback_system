@@ -9,6 +9,8 @@
 .game-avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
 
 .controls-panel { margin-top: 28px; }
+.report-recovery { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 16px; margin: 24px 0 0; background: var(--surface); }
+.report-recovery span { flex: 1; min-width: 160px; overflow-wrap: anywhere; }
 .file-row { display: flex; align-items: center; gap: 16px; min-width: 0; }
 .file-icon { display: grid; width: 40px; height: 40px; flex: 0 0 auto; place-items: center; }
 .file-icon img { display: block; width: 18px; height: 18px; }

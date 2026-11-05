@@ -8,7 +8,9 @@ from .workflow import run_report
 
 
 class BusyError(ValueError):
-    pass
+    def __init__(self, message, active_job=None):
+        super().__init__(message)
+        self.active_job = active_job
 
 
 class Jobs:
@@ -36,17 +38,21 @@ class Jobs:
                 raise ValueError("任务不存在。")
             return json.loads(path.read_text(encoding="utf-8"))
 
+    def current(self):
+        with self.lock:
+            return dict(self.active) if self.active is not None else None
+
     def start(self, game, run, config, options):
         with self.lock:
             if self.active:
-                raise BusyError("另一个报告正在处理，请完成或停止后再试。")
+                raise BusyError("另一个报告正在处理，请完成或停止后再试。", self.current())
             job = uuid.uuid4().hex
             data = dict(id=job, game=game, run=run, status="running", stage="processing",
                         message="正在准备反馈", done=0, total=0, result=None, options=options)
             path = self.path(game, run, job)
             atomic_json(path, data)
             folder = self.storage.folder(game, run)
-            self.active = job
+            self.active = data
             self.cancel.clear()
 
             def update(**values):
@@ -78,8 +84,9 @@ class Jobs:
     def stop(self, game, run, job):
         with self.lock:
             data = self.read(game, run, job)
-            if self.active == job:
+            if self.active is not None and self.active["id"] == job and data["status"] in {"running", "stopping"}:
                 self.cancel.set()
-                data.update(status="stopping", message="正在停止；当前请求结束后保存结果。")
+                self.active.update(status="stopping", message="正在停止；当前请求结束后保存结果。")
+                data = dict(self.active)
                 atomic_json(self.path(game, run, job), data)
             return data

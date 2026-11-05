@@ -11,11 +11,9 @@ let reviewState = null, reviewFields = [];
 let bugReviewState = null, reviewMode = "suggestions";
 let editingReview = false, loadingReview = false, savingReview = false, pushing = false;
 let lastPush = {};
+let recovering = true, recoveryChecked = false, blockedJob = null, recoveryJob = null, activeTimer = null;
+const recoveryKey = `feedback-report:${workspace.dataset.game}`;
 
-// Start fresh on reload, including links created by the previous layout.
-const cleanUrl = new URL(window.location.href);
-cleanUrl.searchParams.delete("upload");
-history.replaceState(null, "", cleanUrl);
 $("#upload-form").reset();
 $("#report-form").reset();
 window.addEventListener("pageshow", event => {
@@ -60,7 +58,12 @@ async function api(url, options = {}) {
     const response = await fetch(url, {cache: "no-store", ...options,
         headers: {"X-CSRF-Token": csrf, ...options.headers}});
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || "请求失败，请刷新页面后重试。");
+    if (!response.ok) {
+        const failure = new Error(data.error || "请求失败，请刷新页面后重试。");
+        failure.status = response.status;
+        failure.activeJob = data.active_job;
+        throw failure;
+    }
     return data;
 }
 
@@ -70,6 +73,130 @@ function post(url, data) {
 
 function runUrl() { return `${base}/${run}`; }
 function jobUrl() { return `${runUrl()}/jobs/${job}`; }
+
+function rememberedJob() {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("upload") && url.searchParams.get("job")) {
+        return {run: url.searchParams.get("upload"), job: url.searchParams.get("job")};
+    }
+    try { return JSON.parse(window.sessionStorage.getItem(recoveryKey)); }
+    catch (_) { return null; }
+}
+
+function rememberJob(reference = {run, job}) {
+    try { window.sessionStorage.setItem(recoveryKey, JSON.stringify(reference)); }
+    catch (_) { /* Server discovery and the URL still recover the active report. */ }
+    const url = new URL(window.location.href);
+    url.searchParams.set("upload", reference.run);
+    url.searchParams.set("job", reference.job);
+    history.replaceState(null, "", url);
+}
+
+function forgetJob() {
+    try { window.sessionStorage.removeItem(recoveryKey); }
+    catch (_) { /* A blocked browser store must not prevent using the workspace. */ }
+    const url = new URL(window.location.href);
+    url.searchParams.delete("upload");
+    url.searchParams.delete("job");
+    history.replaceState(null, "", url);
+}
+
+function showRecovery(data, message) {
+    recoveryJob = data;
+    $("#report-recovery").hidden = false;
+    $("#recovery-message").textContent = message;
+    $("#recovery-open").textContent = data ? "打开报告" : "重新连接";
+}
+
+async function openRecoveredJob(data) {
+    const source = `${base}/${encodeURIComponent(data.run)}`;
+    let metadata, status;
+    try {
+        [metadata, status] = await Promise.all([
+            api(source), api(`${source}/jobs/${encodeURIComponent(data.id)}`)
+        ]);
+    } catch (failure) {
+        failure.missingRecord = [400, 404].includes(failure.status);
+        throw failure;
+    }
+    clearTimeout(timer);
+    $("#upload-form").reset();
+    filePending = false;
+    selection = null;
+    job = data.id;
+    $("#report-preview").hidden = true;
+    $("#report-preview").replaceChildren();
+    $("#report-empty").hidden = false;
+    $("#download-md").removeAttribute("data-ready");
+    try { await loadUpload(metadata, status.options); }
+    catch (failure) { error(failure.message); }
+    if (!blockedJob) $("#report-recovery").hidden = true;
+    await displayJob(status);
+}
+
+async function watchActiveJob() {
+    const previous = blockedJob;
+    try {
+        const active = (await api("/api/jobs/active")).job;
+        if (blockedJob !== previous) return;
+        blockedJob = active;
+        if (blockedJob) showRecovery(blockedJob, "另一个报告正在处理，可打开查看进度或停止处理");
+        else if (previous && recoveryJob?.id === previous.id) {
+            showRecovery(previous, "原报告已结束，可打开查看结果或处理状态");
+        }
+        controls();
+    } catch (_) { /* Keep the known worker reservation until the server can confirm it ended. */ }
+    if (blockedJob) activeTimer = setTimeout(watchActiveJob, 3000);
+}
+
+async function recoverWorkspace(preferred = null) {
+    recovering = true;
+    clearTimeout(activeTimer);
+    $("#recovery-open").disabled = true;
+    controls();
+    let reference;
+    try {
+        const active = (await api("/api/jobs/active")).job;
+        recoveryChecked = true;
+        blockedJob = active && active.game !== workspace.dataset.game ? active : null;
+        if (blockedJob) {
+            showRecovery(blockedJob, "另一个游戏的报告正在处理，可打开查看进度或停止处理");
+            clearTimeout(activeTimer);
+            activeTimer = setTimeout(watchActiveJob, 3000);
+        }
+        reference = active && !blockedJob ? {run: active.run, job: active.id} : preferred || rememberedJob();
+        if (reference && typeof reference.run === "string" && typeof reference.job === "string") {
+            rememberJob(reference);
+            await openRecoveredJob({run: reference.run, id: reference.job});
+        } else {
+            forgetJob();
+            if (!blockedJob) $("#report-recovery").hidden = true;
+        }
+    } catch (failure) {
+        if (failure.missingRecord) {
+            forgetJob();
+            error("原报告记录已不存在，请重新上传文件");
+        } else {
+            recoveryChecked = false;
+            showRecovery(null, "暂时无法恢复报告，重新连接后可继续查看进度");
+        }
+    } finally {
+        recovering = false;
+        $("#recovery-open").disabled = false;
+        controls();
+    }
+}
+
+$("#recovery-open").addEventListener("click", async () => {
+    if (recovering || uploading || editingReview || loadingReview || savingReview || pushing) return;
+    if (recoveryJob && recoveryJob.game !== workspace.dataset.game) {
+        const target = new URL(`/games/${encodeURIComponent(recoveryJob.game)}`, window.location.href);
+        target.searchParams.set("upload", recoveryJob.run);
+        target.searchParams.set("job", recoveryJob.id);
+        window.location.href = target.href;
+    } else await recoverWorkspace(recoveryJob ? {run: recoveryJob.run, job: recoveryJob.id} : null);
+});
+
 function bugDraft(field) {
     return {id: field.item.id, text: field.input.value, included: field.included.checked,
         feedback_ids: field.sourceChecks.filter(source => source.input.checked).map(source => source.id)};
@@ -446,13 +573,14 @@ $("#push-feishu").addEventListener("click", async () => {
 function dates() { return {start: $("#start").value, end: $("#end").value, confirmed: $("#confirm-coverage").checked}; }
 
 function controls() {
-    const reviewing = editingReview || loadingReview || savingReview || pushing;
+    const reviewing = editingReview || loadingReview || savingReview || pushing || recovering;
+    $("#recovery-open").disabled = uploading || reviewing;
     $("#upload-button").disabled = busy || uploading || reviewing;
     $("#file").disabled = busy || uploading || reviewing;
     $("#start").disabled = busy || reviewing;
     $("#end").disabled = busy || reviewing;
     $("#confirm-coverage").disabled = busy || reviewing;
-    $("#generate-button").disabled = busy || uploading || reviewing || filePending || reportComplete || !selection?.ready;
+    $("#generate-button").disabled = busy || uploading || reviewing || blockedJob || !recoveryChecked || filePending || reportComplete || !selection?.ready;
     $("#generate-button").textContent = reportComplete ? "报告已生成" : busy ? "生成中…" : "生成报告 ↗";
     $("#job-spinner").hidden = !busy;
 }
@@ -533,7 +661,7 @@ async function checkSelection() {
     controls();
 }
 
-async function loadUpload(metadata) {
+async function loadUpload(metadata, selected = null) {
     run = metadata.run;
     reportComplete = false;
     resetReview();
@@ -544,9 +672,9 @@ async function loadUpload(metadata) {
     $("#file-label").title = metadata.filename;
     $("#change-file").hidden = false;
     $("#date-span").textContent = `${metadata.source_start} — ${metadata.source_end}`;
-    $("#start").value = metadata.suggested_start;
-    $("#end").value = metadata.suggested_end;
-    $("#confirm-coverage").checked = false;
+    $("#start").value = selected?.start || metadata.suggested_start;
+    $("#end").value = selected?.end || metadata.suggested_end;
+    $("#confirm-coverage").checked = selected?.confirmed === true;
     await showPage(1);
     await checkSelection();
     switchTab("data");
@@ -565,7 +693,7 @@ for (const type of ["dragleave", "drop"]) $("#upload-zone").addEventListener(typ
 
 $("#upload-form").addEventListener("submit", async event => {
     event.preventDefault();
-    if (busy || uploading || editingReview || loadingReview || savingReview || pushing) return;
+    if (busy || uploading || recovering || editingReview || loadingReview || savingReview || pushing) return;
     // Capture before disabling controls: disabled file inputs are omitted from FormData.
     const formData = new FormData(event.target);
     uploading = true;
@@ -574,6 +702,8 @@ $("#upload-form").addEventListener("submit", async event => {
     $("#upload-button").textContent = "正在读取…";
     try {
         const metadata = await api(base, {method: "POST", body: formData});
+        forgetJob();
+        if (!blockedJob) $("#report-recovery").hidden = true;
         filePending = false;
         clearTimeout(timer);
         job = null;
@@ -647,8 +777,13 @@ async function displayJob(data) {
 }
 
 async function pollJob() {
-    try { await displayJob(await api(jobUrl())); }
+    const target = jobUrl();
+    try {
+        const data = await api(target);
+        if (target === jobUrl()) await displayJob(data);
+    }
     catch (failure) {
+        if (target !== jobUrl()) return;
         $("#job-message").textContent = "连接暂时中断，正在重新获取进度…";
         timer = setTimeout(pollJob, 3000);
     }
@@ -656,7 +791,7 @@ async function pollJob() {
 
 $("#report-form").addEventListener("submit", async event => {
     event.preventDefault();
-    if (busy || uploading || editingReview || loadingReview || savingReview || pushing || filePending || reportComplete || !selection?.ready) return;
+    if (busy || uploading || recovering || blockedJob || !recoveryChecked || editingReview || loadingReview || savingReview || pushing || filePending || reportComplete || !selection?.ready) return;
     busy = true;
     controls();
     $("#job-status").hidden = false;
@@ -667,6 +802,7 @@ $("#report-form").addEventListener("submit", async event => {
     try {
         const data = await post(`${runUrl()}/reports`, dates());
         job = data.id;
+        rememberJob();
         resetReview();
         $("#report-preview").replaceChildren();
         $("#report-preview").hidden = true;
@@ -678,9 +814,18 @@ $("#report-form").addEventListener("submit", async event => {
         busy = false;
         controls();
         $("#job-status").hidden = true;
-        error(failure.message);
+        if (failure.activeJob) {
+            blockedJob = failure.activeJob;
+            if (blockedJob.game === workspace.dataset.game) rememberJob({run: blockedJob.run, job: blockedJob.id});
+            showRecovery(blockedJob, "已有报告正在处理，请打开原报告查看进度或停止处理");
+            clearTimeout(activeTimer);
+            activeTimer = setTimeout(watchActiveJob, 3000);
+            controls();
+        } else error(failure.message);
     }
 });
+
+const workspaceReady = recoverWorkspace();
 
 $("#stop-button").addEventListener("click", async () => {
     try { await displayJob(await post(`${jobUrl()}/stop`, {})); }

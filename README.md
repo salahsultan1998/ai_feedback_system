@@ -33,7 +33,9 @@ Open [http://127.0.0.1:5050](http://127.0.0.1:5050). `PORT` optionally changes t
 
 Uploading, previewing, selecting dates and manual editing make no AI calls. Generating reports uses the configured paid API. For a sample, upload `examples/feedback_sample.csv` and select **2026-10-19 through 2026-10-22**.
 
-A refresh opens a clean workspace but keeps saved files and does not cancel a running task. A server restart marks unfinished tasks interrupted.
+Leaving a game or refreshing does not cancel processing. Reopening the game reconnects to its active report and restores the original upload, dates, progress and Stop button. A report that finished while you were away reopens with its downloads. Stopped, failed or interrupted reports can be retried against the same upload to reuse completed work; recovery never starts another AI request automatically.
+
+The browser remembers the report reference for each game for the current tab session and includes it in the page URL. The server remains authoritative about active work, including tasks started in another tab. If another report blocks generation, **打开报告** opens its progress or saved result. Only one report processes at a time; Stop releases that slot after in-flight work finishes. Uploading a replacement file starts a new workspace. A server restart marks unfinished tasks interrupted.
 
 ## Data and report rules
 
@@ -170,6 +172,7 @@ Uploads and report runs are isolated. Record results are reused within an upload
 ```sh
 .venv/bin/python -B -m unittest discover -s tests -v
 node tests/test_game_ui.cjs
+node tests/test_navigation_recovery.cjs
 ```
 
 Node is needed only for the JavaScript interaction checks. Tests use temporary files and simulated AI/Feishu responses; they make no paid model calls or real pushes.

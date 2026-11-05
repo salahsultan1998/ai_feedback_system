@@ -34,7 +34,10 @@ def csrf():
 
 @api.errorhandler(ValueError)
 def invalid(error):
-    return jsonify(error=str(error)), 409 if isinstance(error, (BusyError, report_review.ReviewConflict)) else 400
+    response = {"error": str(error)}
+    if isinstance(error, BusyError) and error.active_job is not None:
+        response["active_job"] = error.active_job
+    return jsonify(response), 409 if isinstance(error, (BusyError, report_review.ReviewConflict)) else 400
 
 
 @api.errorhandler(Exception)
@@ -81,6 +84,12 @@ def load_run(game, run):
     return storage.folder(game, run), config, jobs
 
 
+@api.get("/games/<game>/uploads/<run>")
+def upload_metadata(game, run):
+    storage, _ = services()
+    return jsonify(storage.metadata(game, run))
+
+
 @api.get("/games/<game>/uploads/<run>/preview")
 def preview(game, run):
     folder, config, _ = load_run(game, run)
@@ -122,6 +131,12 @@ def report(game, run):
     from feedback.ai_client import model_name
     config["model"] = model_name(config)
     return jsonify(jobs.start(game, run, config, selected)), 202
+
+
+@api.get("/jobs/active")
+def active_job():
+    _, jobs = services()
+    return jsonify(job=jobs.current())
 
 
 @api.get("/games/<game>/uploads/<run>/jobs/<job>")

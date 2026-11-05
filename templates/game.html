@@ -14,6 +14,10 @@
 <section class="panel empty-state"><h2>此游戏即将开放</h2><p class="muted">分类和游戏术语配置完成后，即可在这里生成反馈报告。</p><a class="button secondary" href="{{ url_for('pages.home') }}">返回首页</a></section>
 {% else %}
 <main id="workspace" data-game="{{ game.code }}">
+    <div id="report-recovery" class="notice report-recovery" role="status" hidden>
+        <span id="recovery-message"></span>
+        <button id="recovery-open" type="button" class="secondary compact">打开报告</button>
+    </div>
     <div id="error" class="notice error" role="alert" hidden></div>
     <section class="panel controls-panel" aria-label="文件与报告日期">
         <form id="upload-form">
