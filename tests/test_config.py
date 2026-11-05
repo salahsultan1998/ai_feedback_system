@@ -51,6 +51,38 @@ class ConfigurationTests(TestCase):
         self.assertEqual(config["classification_batch_size"], 3)
         self.assertEqual(config["classification_batch_max_chars"], load_settings()["classification_batch_max_chars"])
 
+    def test_bug_source_labels_require_explicit_unique_trimmed_names(self):
+        for labels in ("BUG", None, [], [""], [" "], ["BUG", "BUG"], [" BUG"], ["BUG "], [True], [123], ["BUG", None]):
+            def read(path):
+                value = read_json(path)
+                if str(path).endswith("baloot/settings.json"):
+                    value["bug_labels"] = labels
+                return value
+            with self.subTest(labels=labels), patch("feedback.config.read_json", side_effect=read):
+                with self.assertRaisesRegex(ValueError, "bug_labels"):
+                    load_config("baloot")
+
+    def test_bug_source_labels_can_be_customized_without_changing_suggestion_labels(self):
+        def read(path):
+            value = read_json(path)
+            if str(path).endswith("baloot/settings.json"):
+                value["bug_labels"] = ["BUG", "故障", "bug"]
+            return value
+        with patch("feedback.config.read_json", side_effect=read):
+            config = load_config("baloot")
+        self.assertEqual(config["bug_labels"], ["BUG", "故障", "bug"])
+        self.assertEqual(config["suggestion_labels"], ["建议"])
+
+    def test_missing_bug_source_setting_uses_bug_default(self):
+        def read(path):
+            value = read_json(path)
+            if str(path).endswith("baloot/settings.json"):
+                value.pop("bug_labels", None)
+            return value
+        with patch("feedback.config.read_json", side_effect=read):
+            config = load_config("baloot")
+        self.assertEqual(config.get("bug_labels", ["BUG"]), ["BUG"])
+
     def test_batch_settings_must_be_positive_integers(self):
         settings = load_settings()
         for key in ("classification_batch_size", "classification_batch_max_chars"):

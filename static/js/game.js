@@ -9,6 +9,7 @@ let busy = false, uploading = false, filePending = false, timer = null, selectio
 let pushUnknown = false;
 let reportComplete = false;
 let reviewState = null, reviewDetail = null, reviewFields = [];
+let bugReviewState = null, reviewMode = "suggestions";
 let editingReview = false, loadingReview = false, savingReview = false, pushing = false;
 let lastPush = {};
 
@@ -70,34 +71,70 @@ function post(url, data) {
 
 function runUrl() { return `${base}/${run}`; }
 function jobUrl() { return `${runUrl()}/jobs/${job}`; }
+function bugDraft(field) {
+    return {id: field.item.id, text: field.input.value, included: field.included.checked,
+        feedback_ids: field.sourceChecks.filter(source => source.input.checked).map(source => source.id)};
+}
+
 function reviewDirty() {
-    return editingReview && reviewFields.some(({item, input}) => input.value !== item.text);
+    if (!editingReview) return false;
+    if (reviewMode !== "bugs") return reviewFields.some(({item, input}) => input.value !== item.text);
+    return reviewFields.some(field => {
+        const draft = bugDraft(field);
+        return draft.text !== field.item.text || draft.included !== field.item.included ||
+            draft.feedback_ids.length !== field.item.feedback_ids.length || draft.feedback_ids.some(id => !field.item.feedback_ids.includes(id));
+    });
 }
 
 function reviewControls() {
     const inEditor = editingReview || loadingReview;
     const edit = $("#edit-suggestions");
     edit.disabled = !reviewState?.editable || inEditor || savingReview || pushing;
-    edit.textContent = loadingReview ? "正在读取…" : "编辑建议";
+    edit.textContent = loadingReview && reviewMode === "suggestions" ? "正在读取…" : "编辑建议";
     edit.title = reviewState?.locked_reason || "对照玩家原文，人工修正建议";
+    const bugs = $("#edit-bugs");
+    bugs.disabled = !bugReviewState?.editable || inEditor || savingReview || pushing;
+    bugs.textContent = loadingReview && reviewMode === "bugs" ? "正在读取…" : "审核 BUG";
+    bugs.title = bugReviewState?.locked_reason || "核查 BUG 描述，排除误判问题和归属错误的反馈";
     $("#push-feishu").disabled = !lastPush.available || lastPush.status === "sent" || inEditor || savingReview || pushing;
     $("#download-md").setAttribute("aria-disabled", String(inEditor || savingReview));
-    $("#download-md").title = inEditor ? "请先保存或取消建议修改，再下载 Markdown" : "下载已保存的报告";
+    $("#download-md").title = inEditor ? "请先保存或取消修改，再下载 Markdown" : "下载已保存的报告";
     const dirty = reviewDirty();
-    $("#save-review").disabled = !dirty || savingReview;
+    const invalidBug = reviewMode === "bugs" && reviewFields.some(field => field.included.checked && !field.sourceChecks.some(source => source.input.checked));
+    $("#save-review").disabled = !dirty || savingReview || invalidBug;
     $("#save-review").textContent = savingReview ? "正在保存…" : "保存修改";
     $("#cancel-review").disabled = savingReview;
-    $("#restore-suggestions").disabled = savingReview || !reviewFields.some(({item, input}) => input.value !== item.original_text);
-    for (const {input} of reviewFields) input.disabled = savingReview;
-    $("#review-draft-status").textContent = savingReview ? "正在保存，请稍候。" : dirty ? "有未保存修改 · 保存后再推送或下载 MD" : "正在查看已保存的建议";
+    $("#restore-suggestions").disabled = savingReview || !reviewFields.some(field => field.input.value !== field.item.original_text ||
+        (reviewMode === "bugs" && (!field.included.checked || field.sourceChecks.some(source => !source.input.checked))));
+    for (const field of reviewFields) {
+        field.input.disabled = savingReview || (reviewMode === "bugs" && !field.included.checked);
+        if (reviewMode === "bugs") {
+            field.input.required = field.included.checked;
+            field.included.disabled = savingReview;
+            field.card.classList.toggle("excluded", !field.included.checked);
+            field.removed.hidden = field.included.checked;
+            for (const source of field.sourceChecks) source.input.disabled = savingReview || !field.included.checked;
+        }
+    }
+    if (reviewMode === "bugs") {
+        const included = reviewFields.map(bugDraft).filter(item => item.included);
+        const feedbackIds = new Set(included.flatMap(item => item.feedback_ids));
+        $("#bug-review-summary").textContent = `当前保留 ${included.length} 个问题，涉及 ${feedbackIds.size} 条去重反馈。保存后自动更新报告。`;
+    }
+    $("#review-draft-status").textContent = savingReview ? "正在保存，请稍候。" : invalidBug ? "保留的问题至少需要一条来源反馈" : dirty ? "有未保存修改 · 保存后再推送或下载 MD" : reviewMode === "bugs" ? "正在查看已保存的 BUG 审核结果" : "正在查看已保存的建议";
     const status = $("#review-status");
     status.classList.toggle("modified", Boolean(reviewState?.modified));
     status.textContent = reviewState?.locked_reason || (reviewState?.modified ? "已人工修改 · 预览、Markdown 下载与飞书推送使用已保存版本" : "");
     status.hidden = !status.textContent;
+    const bugStatus = $("#bug-review-status");
+    bugStatus.classList.toggle("modified", Boolean(bugReviewState?.modified));
+    bugStatus.textContent = bugReviewState?.modified ? "BUG 已人工审核修改 · 报告使用已保存结果" : "";
+    bugStatus.hidden = !bugStatus.textContent;
 }
 
 function applyReport(report) {
     reviewState = report.review || null;
+    bugReviewState = report.bug_review || null;
     $("#report-preview").innerHTML = report.html;
     showPush(report.feishu);
     reviewControls();
@@ -117,6 +154,8 @@ function closeReview() {
 function resetReview() {
     editingReview = loadingReview = savingReview = false;
     reviewState = reviewDetail = null;
+    bugReviewState = null;
+    reviewMode = "suggestions";
     reviewFields = [];
     lastPush = {};
     $("#review-editor").hidden = true;
@@ -124,7 +163,7 @@ function resetReview() {
     reviewControls();
 }
 
-function sourceCard(source) {
+function sourceCard(source, sourceToggle = null) {
     const card = document.createElement("div");
     card.className = "review-source";
     const id = document.createElement("span");
@@ -144,6 +183,7 @@ function sourceCard(source) {
         column.append(title, body);
         columns.append(column);
     }
+    if (sourceToggle) card.append(sourceToggle);
     card.append(id, columns);
     return card;
 }
@@ -186,6 +226,10 @@ function renderReview(detail) {
         return card;
     });
     $("#review-items").replaceChildren(...cards);
+    $("#review-title").textContent = "核查玩家建议";
+    $("#review-description").textContent = "对照玩家原文与 AI 中文翻译，修改报告中的建议表述。反馈 ID 会保留。";
+    $("#restore-suggestions").textContent = "恢复原始建议";
+    $("#bug-review-summary").hidden = true;
     $("#review-editor").hidden = false;
     $("#report-preview").hidden = true;
     editingReview = true;
@@ -194,9 +238,94 @@ function renderReview(detail) {
     reviewFields[0]?.input.focus();
 }
 
+function renderBugReview(detail) {
+    reviewDetail = detail;
+    reviewFields = [];
+    const cards = detail.bugs.map((item, index) => {
+        const card = document.createElement("section");
+        card.className = "suggestion-review bug-review";
+        const heading = document.createElement("div");
+        heading.className = "bug-review-heading";
+        const identity = document.createElement("div");
+        const code = document.createElement("h3");
+        code.textContent = item.code;
+        const module = document.createElement("p");
+        module.className = "bug-review-module";
+        const categories = Array.isArray(item.categories) ? item.categories.join(" / ") : item.categories;
+        module.textContent = [item.label, categories].filter(Boolean).join(" · ");
+        identity.append(code, module);
+        const keepLabel = document.createElement("label");
+        keepLabel.className = "bug-toggle";
+        const included = document.createElement("input");
+        included.type = "checkbox";
+        included.checked = item.included;
+        included.addEventListener("change", reviewControls);
+        const keepText = document.createElement("span");
+        keepText.textContent = "保留此问题";
+        keepLabel.append(included, keepText);
+        heading.append(identity, keepLabel);
+        const label = document.createElement("label");
+        const input = document.createElement("textarea");
+        input.id = `bug-draft-${index}`;
+        input.value = item.text;
+        input.maxLength = 2000;
+        input.rows = 3;
+        input.required = item.included;
+        input.addEventListener("input", reviewControls);
+        label.htmlFor = input.id;
+        label.textContent = "问题描述";
+        const removed = document.createElement("p");
+        removed.className = "bug-removed-note";
+        removed.textContent = "此问题将移出报告，原始反馈仍可在下方核对。";
+        const field = {item, input, included, sourceChecks: [], card, removed};
+        const sources = document.createElement("div");
+        sources.className = "review-sources";
+        const sourceHeading = document.createElement("h3");
+        sourceHeading.textContent = `参考反馈（共 ${item.sources.length} 条）· 可取消归属错误的反馈`;
+        sources.append(sourceHeading);
+        function selectableSource(source) {
+            const sourceLabel = document.createElement("label");
+            sourceLabel.className = "bug-toggle bug-source-toggle";
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.checked = item.feedback_ids.includes(source.feedback_id);
+            checkbox.addEventListener("change", reviewControls);
+            const text = document.createElement("span");
+            text.textContent = "保留此条反馈";
+            sourceLabel.append(checkbox, text);
+            field.sourceChecks.push({id: source.feedback_id, input: checkbox});
+            return sourceCard(source, sourceLabel);
+        }
+        if (item.sources.length) sources.append(selectableSource(item.sources[0]));
+        if (item.sources.length > 1) {
+            const details = document.createElement("details");
+            const summary = document.createElement("summary");
+            summary.textContent = `展开其余 ${item.sources.length - 1} 条来源`;
+            details.append(summary);
+            for (const source of item.sources.slice(1)) details.append(selectableSource(source));
+            sources.append(details);
+        }
+        card.append(heading, label, input, removed, sources);
+        reviewFields.push(field);
+        return card;
+    });
+    $("#review-items").replaceChildren(...cards);
+    $("#review-title").textContent = "审核 BUG";
+    $("#review-description").textContent = "对照原文修正问题描述，移除误判问题或归属错误的反馈。保存后自动更新 BUG 问题数和去重反馈数。";
+    $("#restore-suggestions").textContent = "恢复原始 BUG";
+    $("#bug-review-summary").hidden = false;
+    $("#review-editor").hidden = false;
+    $("#report-preview").hidden = true;
+    editingReview = true;
+    controls();
+    reviewControls();
+    (reviewFields.find(field => field.included.checked)?.input || reviewFields[0]?.included)?.focus();
+}
+
 $("#edit-suggestions").addEventListener("click", async () => {
     if ($("#edit-suggestions").disabled) return;
     const target = jobUrl();
+    reviewMode = "suggestions";
     loadingReview = true;
     controls();
     reviewControls();
@@ -218,32 +347,69 @@ $("#edit-suggestions").addEventListener("click", async () => {
     }
 });
 
+$("#edit-bugs").addEventListener("click", async () => {
+    if ($("#edit-bugs").disabled) return;
+    const target = jobUrl();
+    reviewMode = "bugs";
+    loadingReview = true;
+    controls();
+    reviewControls();
+    error("");
+    try {
+        const detail = await api(`${target}/bugs`);
+        if (target !== jobUrl()) return;
+        bugReviewState = detail;
+        if (!detail.editable) throw new Error(detail.locked_reason || "此报告目前无法审核 BUG。");
+        renderBugReview(detail);
+    } catch (failure) {
+        if (target === jobUrl()) error(failure.message);
+    } finally {
+        if (target === jobUrl()) {
+            loadingReview = false;
+            controls();
+            reviewControls();
+        }
+    }
+});
+
 $("#cancel-review").addEventListener("click", () => {
     if (savingReview) return;
     closeReview();
-    $("#edit-suggestions").focus();
+    $(reviewMode === "bugs" ? "#edit-bugs" : "#edit-suggestions").focus();
 });
 
 $("#restore-suggestions").addEventListener("click", () => {
     if (savingReview) return;
-    for (const {item, input} of reviewFields) input.value = item.original_text;
+    for (const field of reviewFields) {
+        field.input.value = field.item.original_text;
+        if (reviewMode === "bugs") {
+            field.included.checked = true;
+            for (const source of field.sourceChecks) source.input.checked = field.item.original_feedback_ids.includes(source.id);
+        }
+    }
     reviewControls();
 });
 
 $("#review-editor").addEventListener("submit", async event => {
     event.preventDefault();
     if (!editingReview || savingReview || !reviewDirty()) return;
+    if (reviewMode === "bugs" && reviewFields.some(field => field.included.checked && !field.sourceChecks.some(source => source.input.checked))) {
+        error("保留的问题至少需要一条来源反馈。");
+        return;
+    }
     const target = jobUrl();
     savingReview = true;
     reviewControls();
     error("");
     try {
-        const report = await post(`${target}/review`, {version: reviewDetail.version,
-            suggestions: reviewFields.map(({item, input}) => ({id: item.id, text: input.value}))});
+        const bugs = reviewMode === "bugs";
+        const body = bugs ? {version: reviewDetail.version, bugs: reviewFields.map(bugDraft)} :
+            {version: reviewDetail.version, suggestions: reviewFields.map(({item, input}) => ({id: item.id, text: input.value}))};
+        const report = await post(`${target}/${bugs ? "bugs" : "review"}`, body);
         if (target !== jobUrl()) return;
         closeReview();
         applyReport(report);
-        $("#edit-suggestions").focus();
+        $(reviewMode === "bugs" ? "#edit-bugs" : "#edit-suggestions").focus();
     } catch (failure) {
         if (target === jobUrl()) error(failure.message);
     } finally {
@@ -258,7 +424,7 @@ $("#review-editor").addEventListener("submit", async event => {
 $("#download-md").addEventListener("click", event => {
     if (!editingReview && !loadingReview && !savingReview) return;
     event.preventDefault();
-    error("请先保存或取消建议修改，再下载 Markdown。");
+    error("请先保存或取消修改，再下载 Markdown。");
 });
 
 function showPush(data = {}) {
@@ -287,10 +453,11 @@ $("#push-feishu").addEventListener("click", async () => {
     $("#push-status").hidden = false;
     error("");
     try {
-        const data = await post(`${target}/push/feishu`, {retry_unknown: pushUnknown, report_version: reviewState?.version});
+        const data = await post(`${target}/push/feishu`, {retry_unknown: pushUnknown, report_version: reviewState?.version || bugReviewState?.version});
         if (target !== jobUrl()) return;
         showPush(data);
         if (reviewState) reviewState = {...reviewState, editable: false, locked_reason: "此报告已开始推送，建议内容已锁定。"};
+        if (bugReviewState) bugReviewState = {...bugReviewState, editable: false, locked_reason: "此报告已开始推送，BUG 审核内容已锁定。"};
         const report = await api(`${target}/report`);
         if (target === jobUrl()) applyReport(report);
     } catch (failure) {

@@ -47,6 +47,11 @@ def load_config(code, root=ROOT):
             any(not isinstance(label, str) or not label.strip() or label != label.strip() for label in suggestion_labels) or
             len(set(suggestion_labels)) != len(suggestion_labels)):
         raise ValueError("suggestion_labels 必须是不重复的非空源标签列表。")
+    bug_labels = config.get("bug_labels", ["BUG"])
+    if (not isinstance(bug_labels, list) or not bug_labels or
+            any(not isinstance(label, str) or not label.strip() or label != label.strip() for label in bug_labels) or
+            len(set(bug_labels)) != len(bug_labels)):
+        raise ValueError("bug_labels 必须是不重复的非空源标签列表。")
     report = config["report"]
     if report["ai_max_input_chars"] < 3000 or any(report[k] < 1 for k in
             ("max_suggestions", "max_issues_per_module", "max_evidence_ids")):
@@ -63,13 +68,16 @@ def load_config(code, root=ROOT):
     if reasons is not None and (not isinstance(reasons, list) or not reasons or
             any(not isinstance(reason, str) or not reason.strip() for reason in reasons) or len(set(reasons)) != len(reasons)):
         raise ValueError("语义排除原因必须为不重复的非空字符串列表。")
-    for name in ("classification", "suggestions", "issues"):
+    prompt_names = ["classification", "suggestions", "issues"]
+    if (folder / "prompts" / "bugs.md").exists():
+        prompt_names.append("bugs")
+    for name in prompt_names:
         prompt = (folder / "prompts" / f"{name}.md").read_text(encoding="utf-8")
         if name == "classification" and "{{LABEL_SCHEMA}}" not in prompt:
             raise ValueError("分类提示词缺少 {{LABEL_SCHEMA}}。")
         config[name + "_prompt"] = prompt.replace("{{GAME_NAME}}", game["name"]).replace(
             "{{LABEL_SCHEMA}}", json.dumps(config["schema"], ensure_ascii=False))
-        if name in {"suggestions", "issues"}:
+        if name in {"suggestions", "issues", "bugs"}:
             config[name + "_prompt"] += REPORT_LANGUAGE_INSTRUCTIONS
             terminology = config["schema"].get("terminology")
             if terminology:

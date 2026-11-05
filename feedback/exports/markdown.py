@@ -46,6 +46,12 @@ def render_markdown(snapshot, analysis, config):
             raise ValueError("建议引用了不属于本期有效反馈的记录。")
         feedback_ids = "、".join(dict.fromkeys(item["feedback_ids"]))
         lines.append(f"{index}. {safe(item['text'])}（反馈 ID：{safe(feedback_ids)}）")
+    if "bugs" in analysis:
+        from ..bug_review import render_section
+        allowed = {str(fid) for fid in snapshot["current"]["反馈ID"]} if analysis["bugs"] else set()
+        if any(fid not in allowed for item in analysis["bugs"] for fid in item["feedback_ids"]):
+            raise ValueError("BUG 引用了不属于本期有效反馈的记录。")
+        lines += ["", render_section(analysis["bugs"]).strip()]
     lines += ["", "## 反馈统计", "",
         "| 反馈模块 | 本期数量 | 上周同期数量 | 变化 | 重点问题分析 |",
         "| :--- | :--- | :--- | :--- | :--- |"]

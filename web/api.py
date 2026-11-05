@@ -14,7 +14,7 @@ from feedback.cleaning import clean_feedback, parse_dates
 from feedback.storage import atomic_csv, atomic_json, read_csv
 from feedback.workflow import prepare_selection
 from feedback.jobs import BusyError
-from feedback import feishu, report_review
+from feedback import bug_review, feishu, report_review
 
 api = Blueprint("api", __name__, url_prefix="/api")
 
@@ -159,7 +159,8 @@ def report_response(folder, game, run, job):
     excel_url = url_for("api.download", game=game, run=run, job=job, kind="excel")
     html = html.replace('href="feedback_details.xlsx"', f'href="{excel_url}"')
     return jsonify(html=html, feishu=feishu.state(folder, config_for(game)),
-                   review=report_review.summary(folder, text=text))
+                   review=report_review.summary(folder, text=text),
+                   bug_review=bug_review.summary(folder, text=text))
 
 
 def prepare_review(folder):
@@ -198,6 +199,27 @@ def review_save(game, run, job):
         raise BusyError("正在保存或推送报告，请稍后再试。")
     try:
         report_review.save(folder, data.get("version"), data.get("suggestions"))
+        return report_response(folder, game, run, job)
+    finally:
+        lock.release()
+
+
+@api.get("/games/<game>/uploads/<run>/jobs/<job>/bugs")
+def bug_details(game, run, job):
+    return jsonify(bug_review.details(completed_folder(game, run, job)))
+
+
+@api.post("/games/<game>/uploads/<run>/jobs/<job>/bugs")
+def bug_save(game, run, job):
+    folder = completed_folder(game, run, job)
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        raise ValueError("请求格式无效。")
+    lock = current_app.extensions["feishu_lock"]
+    if not lock.acquire(blocking=False):
+        raise BusyError("正在保存或推送报告，请稍后再试。")
+    try:
+        bug_review.save(folder, data.get("version"), data.get("bugs"))
         return report_response(folder, game, run, job)
     finally:
         lock.release()

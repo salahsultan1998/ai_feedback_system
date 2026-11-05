@@ -5,6 +5,7 @@ from .selection import select_feedback, period_mask
 from .processing import process_feedback
 from .statistics import build_statistics
 from .analysis import analyze_report
+from .bugs import analyze_bugs
 from .exports.markdown import render_markdown
 from .exports.excel import write_excel
 from .storage import read_csv, atomic_json
@@ -31,6 +32,8 @@ def run_report(folder, config, start, end, confirmed, job_id, progress, should_s
     snapshot = build_statistics(processed, info, config)
     info = snapshot["selection"]
     analysis = analyze_report(snapshot, config, folder / "analysis_cache", progress, should_stop)
+    if config.get("bugs_prompt"):
+        analysis["bugs"] = analyze_bugs(snapshot, config, folder / "analysis_cache", progress, should_stop)
     check_stop(should_stop)
     progress(stage="export", message="正在生成报告与翻译明细", done=0, total=0)
     markdown = render_markdown(snapshot, analysis, config)

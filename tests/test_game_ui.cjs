@@ -31,10 +31,27 @@ function boot(options = {}) {
     const server = {pushStatus: options.pushStatus || "unknown", version: "revision-1", html: "<h1>Report</h1>",
         suggestions: [{id:"s0", text:"增加相册入口", original_text:"增加相册入口", feedback_ids:["0001", "0002"],
             sources:[{feedback_id:"0001",original_text:"أريد إضافة ألبوم الصور",translation_zh:"希望添加相册。"},
-                {feedback_id:"0002",original_text:"<script>unsafe()</script>",translation_zh:"希望增加相册入口。"}]}]};
+                {feedback_id:"0002",original_text:"<script>unsafe()</script>",translation_zh:"希望增加相册入口。"}]}],
+        bugs: options.bugs || [{id:"b0",code:"BUG-001",label:"账号问题",categories:"无法登录",text:"玩家反映无法登录。",original_text:"玩家反映无法登录。",included:true,
+            feedback_ids:["0001","0002"],original_feedback_ids:["0001","0002"],
+            sources:[{feedback_id:"0001",original_text:"لا أستطيع الدخول",translation_zh:"无法进入游戏。"},
+                {feedback_id:"0002",original_text:"登录失败",translation_zh:"登录失败。"}]},
+            {id:"b1",code:"BUG-002",label:"玩法相关",categories:["活动","许愿树"],text:"活动入口打不开。",original_text:"活动入口打不开。",included:true,
+            feedback_ids:["0002","0003"],original_feedback_ids:["0002","0003"],
+            sources:[{feedback_id:"0002",original_text:"登录失败",translation_zh:"登录失败。"},
+                {feedback_id:"0003",original_text:"活动打不开",translation_zh:"活动打不开。"}]}]};
     function review() {
         return {available:true, editable:server.pushStatus === "ready", locked_reason:server.pushStatus === "ready" ? "" : "此报告已开始推送，建议内容已锁定。",
             version:server.version, modified:server.suggestions.some(item=>item.text!==item.original_text), updated_at:null};
+    }
+    function bugReview() {
+        const available = options.bugAvailable !== false;
+        return {available, editable:available && server.bugs.length > 0 && server.pushStatus === "ready", has_bugs:server.bugs.length>0,
+            locked_reason:!available ? "此报告未保存 BUG 审核来源，请重新生成报告。" : server.bugs.length === 0 ? "本期未发现 BUG 候选。" : server.pushStatus === "ready" ? "" : "此报告已开始推送，BUG 审核已锁定。",
+            version:server.version, modified:server.bugs.some(item=>item.text!==item.original_text || !item.included || item.feedback_ids.length!==item.original_feedback_ids.length || item.feedback_ids.some(id=>!item.original_feedback_ids.includes(id)))};
+    }
+    function reportResponse() {
+        return {html:server.html, feishu:{available:true,status:server.pushStatus,sent_at:"2026-10-26T00:00:00+00:00"}, review:review(), bug_review:bugReview()};
     }
     let url = "http://localhost/games/baloot?upload=old-upload";
     const context = vm.createContext({
@@ -60,7 +77,7 @@ function boot(options = {}) {
                 id: "job", status: "complete", message: "完成", done: 2, total: 2,
                 result: {total:1, previous_total:1, selection:{periods:{current:{start:"2026-10-19",end:"2026-10-22"}}}}
             };
-            else if (path.endsWith("/report")) data = {html:server.html, feishu:{available:true,status:server.pushStatus,sent_at:"2026-10-26T00:00:00+00:00"},review:review()};
+            else if (path.endsWith("/report")) data = reportResponse();
             else if (path.endsWith("/review")) {
                 if (options.method === "POST") {
                     const body = JSON.parse(options.body);
@@ -69,8 +86,21 @@ function boot(options = {}) {
                     for (const item of body.suggestions) server.suggestions.find(s=>s.id===item.id).text = item.text;
                     server.version = `revision-${Number(server.version.split("-")[1]) + 1}`;
                     server.html = `<h1>Report</h1><p>${server.suggestions[0].text}</p>`;
-                    data = {html:server.html, feishu:{available:true,status:server.pushStatus}, review:review()};
+                    data = reportResponse();
                 } else data = {...review(), suggestions:JSON.parse(JSON.stringify(server.suggestions))};
+            }
+            else if (path.endsWith("/bugs")) {
+                if (options.method === "POST") {
+                    const body = JSON.parse(options.body);
+                    assert.equal(body.version, server.version);
+                    assert.deepEqual(Object.keys(body.bugs[0]).sort(), ["feedback_ids","id","included","text"]);
+                    for (const item of body.bugs) Object.assign(server.bugs.find(bug=>bug.id===item.id), item);
+                    server.version = `revision-${Number(server.version.split("-")[1]) + 1}`;
+                    const kept = server.bugs.filter(item=>item.included);
+                    const count = new Set(kept.flatMap(item=>item.feedback_ids)).size;
+                    server.html = `<h1>Report</h1><p>${server.suggestions[0].text}</p><p>BUG 问题数：${kept.length}；涉及反馈：${count}</p>` + kept.map(item=>`<p>${item.code} ${item.text}</p>`).join("");
+                    data = reportResponse();
+                } else data = {...bugReview(), bugs:JSON.parse(JSON.stringify(server.bugs))};
             }
             else if (path.endsWith("/push/feishu")) {
                 assert.equal(JSON.parse(options.body).retry_unknown, server.pushStatus === "unknown");
@@ -205,7 +235,89 @@ function boot(options = {}) {
     const pushRequest = reviewApp.requests.find(item=>item.path.endsWith("/push/feishu"));
     assert.equal(JSON.parse(pushRequest.options.body).report_version,"revision-2");
     assert.equal(n("edit-suggestions").disabled,true);
+    assert.equal(n("edit-bugs").disabled,true);
     assert(n("review-status").textContent.includes("锁定"));
     assert.equal(reviewApp.requests.filter(item=>item.path.endsWith("/reports")).length,1,"Editing never generates another AI report");
-    console.log("UI interactions passed: report workflow, source references, suggestion drafts/save/cancel/restore, push revision and locking.");
+
+    const bugApp = boot({pushStatus:"ready"});
+    const b = id => bugApp.nodes.get("#"+id);
+    const bugFields = () => vm.runInContext("reviewFields", bugApp.context);
+    const change = (input, checked) => {input.checked=checked; input.listeners.change();};
+    await b("upload-form").listeners.submit({preventDefault(){},target:b("upload-form")});
+    await b("report-form").listeners.submit({preventDefault(){}});
+    await b("edit-suggestions").listeners.click();
+    bugFields()[0].input.value="保留的人工建议修改";
+    bugFields()[0].input.listeners.input();
+    await b("review-editor").listeners.submit({preventDefault(){}});
+    assert.equal(b("edit-bugs").disabled,false);
+    await b("edit-bugs").listeners.click();
+    assert.equal(b("review-title").textContent,"审核 BUG");
+    assert.equal(b("edit-suggestions").disabled,true,"Only one editor can be open");
+    const callsBeforeOtherEditor = bugApp.calls.length;
+    await b("edit-suggestions").listeners.click();
+    assert.equal(bugApp.calls.length,callsBeforeOtherEditor);
+    assert(b("bug-review-summary").textContent.includes("2 个问题，涉及 3 条去重反馈"),"Shared feedback IDs count once");
+    assert(bugApp.created.some(item=>item.textContent==="BUG-001"));
+    assert(bugApp.created.some(item=>item.textContent==="玩法相关 · 活动 / 许愿树"));
+    change(bugFields()[0].sourceChecks[1].input,false);
+    assert(b("bug-review-summary").textContent.includes("2 个问题，涉及 3 条去重反馈"));
+    change(bugFields()[1].included,false);
+    assert(b("bug-review-summary").textContent.includes("1 个问题，涉及 1 条去重反馈"));
+    assert.equal(bugFields()[1].input.disabled,true);
+    assert.equal(bugFields()[1].input.required,false);
+    assert.equal(bugFields()[1].removed.hidden,false);
+    beforeUnload={preventDefault(){this.prevented=true;}};
+    bugApp.windowListeners.beforeunload(beforeUnload);
+    assert(beforeUnload.prevented,"BUG draft triggers unload protection");
+    change(bugFields()[0].sourceChecks[0].input,false);
+    assert.equal(b("save-review").disabled,true,"An included issue must retain evidence");
+    assert(b("review-draft-status").textContent.includes("至少需要一条"));
+    b("restore-suggestions").listeners.click();
+    assert.equal(vm.runInContext("reviewDirty()",bugApp.context),false);
+    assert.equal(bugFields()[1].included.checked,true);
+    assert(bugFields().every(field=>field.sourceChecks.every(source=>source.input.checked)));
+    change(bugFields()[0].sourceChecks[1].input,false);
+    change(bugFields()[1].included,false);
+    bugFields()[0].input.value="玩家反映登录时出现错误提示。";
+    bugFields()[0].input.listeners.input();
+    assert.equal(b("push-feishu").disabled,true);
+    assert.equal(b("download-md").getAttribute("aria-disabled"),"true");
+    await b("review-editor").listeners.submit({preventDefault(){}});
+    const savedBugs = JSON.parse(bugApp.requests.find(item=>item.path.endsWith("/bugs")&&item.options.method==="POST").options.body).bugs;
+    assert.deepEqual(savedBugs[0].feedback_ids,["0001"]);
+    assert.equal(savedBugs[1].included,false);
+    assert(b("report-preview").innerHTML.includes("BUG 问题数：1；涉及反馈：1"));
+    assert(b("report-preview").innerHTML.includes("玩家反映登录时出现错误提示。"));
+    assert(b("bug-review-status").textContent.includes("BUG 已人工审核修改"));
+    assert(b("review-status").textContent.includes("已人工修改"),"BUG changes preserve independent suggestion badge");
+    await b("edit-bugs").listeners.click();
+    change(bugFields()[0].included,false);
+    await b("review-editor").listeners.submit({preventDefault(){}});
+    assert(b("report-preview").innerHTML.includes("BUG 问题数：0；涉及反馈：0"));
+    assert.equal(b("edit-bugs").disabled,false,"Excluded-all BUG review can reopen for restoration");
+    await b("edit-bugs").listeners.click();
+    b("restore-suggestions").listeners.click();
+    b("cancel-review").listeners.click();
+    assert(bugApp.server.bugs.every(item=>!item.included),"Cancel discards local restoration");
+    await b("edit-bugs").listeners.click();
+    b("restore-suggestions").listeners.click();
+    await b("review-editor").listeners.submit({preventDefault(){}});
+    assert(b("report-preview").innerHTML.includes("BUG 问题数：2；涉及反馈：3"));
+    assert.equal(b("bug-review-status").hidden,true,"Restoring originals clears BUG modification status");
+    assert(b("review-status").textContent.includes("已人工修改"));
+    await b("push-feishu").listeners.click();
+    const bugPush = bugApp.requests.find(item=>item.path.endsWith("/push/feishu"));
+    assert.equal(JSON.parse(bugPush.options.body).report_version,"revision-5","Push uses revision after BUG saves");
+    assert.equal(b("edit-bugs").disabled,true);
+    assert.equal(b("edit-suggestions").disabled,true);
+    assert.equal(bugApp.calls.filter(path=>path.endsWith("/reports")).length,1);
+
+    for (const options of [{bugAvailable:false},{bugs:[]}]) {
+        const old = boot({pushStatus:"ready",...options});
+        await old.nodes.get("#upload-form").listeners.submit({preventDefault(){},target:old.nodes.get("#upload-form")});
+        await old.nodes.get("#report-form").listeners.submit({preventDefault(){}});
+        assert.equal(old.nodes.get("#edit-bugs").disabled,true);
+        assert(old.nodes.get("#edit-bugs").title.includes(options.bugs ? "未发现" : "重新生成"));
+    }
+    console.log("UI interactions passed: suggestion/BUG editing, original sources, source exclusions, unique counts, restore/cancel, revisions and push locking.");
 })().catch(error => {console.error(error);process.exitCode=1;});

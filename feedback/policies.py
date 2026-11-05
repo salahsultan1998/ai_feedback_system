@@ -11,6 +11,14 @@ def suggestion_mask(rows, config):
     return rows["反馈标签"].map(lambda label: is_suggestion_label(label, config))
 
 
+def is_bug_label(label, config):
+    return str(label).strip() in config.get("bug_labels", ["BUG"])
+
+
+def bug_mask(rows, config):
+    return rows["反馈标签"].map(lambda label: is_bug_label(label, config))
+
+
 def abuse_mask(rows):
     # The retired module is also blocked if an older/inconsistent row is supplied.
     return rows["排除原因"].eq(ABUSE_REASON) | rows["最终标签"].eq("辱骂")

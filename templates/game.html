@@ -58,6 +58,7 @@
             <span id="date-span" class="muted toolbar-meta"></span>
             <div id="downloads" class="downloads" hidden>
                 <button id="edit-suggestions" type="button" class="secondary compact" disabled>编辑建议</button>
+                <button id="edit-bugs" type="button" class="secondary compact" disabled>审核 BUG</button>
                 <button id="push-feishu" type="button" class="secondary compact" disabled>未配置飞书推送</button>
                 <a id="download-md" class="button secondary compact" href="#">Markdown ↓</a>
                 <a id="download-excel" class="button secondary compact" href="#">完整翻译 Excel ↓</a>
@@ -70,10 +71,11 @@
         <div id="result-section" role="tabpanel" aria-labelledby="report-tab" hidden>
             <p id="push-status" class="muted small" role="status" aria-live="polite" hidden></p>
             <p id="review-status" class="review-status muted small" role="status" aria-live="polite" hidden></p>
+            <p id="bug-review-status" class="review-status muted small" role="status" aria-live="polite" hidden></p>
             <div id="report-empty" class="empty-state"><h2 id="result-title">报告尚未生成</h2><p class="muted">选择日期并生成后，报告会显示在这里。</p></div>
             <article id="report-preview" class="report-preview" hidden></article>
             <form id="review-editor" class="review-editor" aria-labelledby="review-title" hidden>
-                <div class="review-heading"><h2 id="review-title">核查玩家建议</h2><p class="muted small">对照玩家原文与 AI 中文翻译，修改报告中的建议表述。反馈 ID 会保留。</p></div>
+                <div class="review-heading"><h2 id="review-title">核查玩家建议</h2><p id="review-description" class="muted small">对照玩家原文与 AI 中文翻译，修改报告中的建议表述。反馈 ID 会保留。</p><p id="bug-review-summary" class="small" role="status" aria-live="polite" hidden></p></div>
                 <div id="review-items" class="review-items"></div>
                 <div class="review-actions">
                     <button id="restore-suggestions" type="button" class="secondary compact">恢复原始建议</button>

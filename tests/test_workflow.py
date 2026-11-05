@@ -21,12 +21,15 @@ class WorkflowTests(BaseTest):
 
         with patch("feedback.ai_client.request_json", side_effect=request) as model:
             before = run_report(self.root, first, "2026-10-19", "2026-10-22", False, "high-threshold", lambda **v: None)
-            self.assertEqual(model.call_count, 1)
+            self.assertEqual(sum("feedbacks" in call.args[1] for call in model.call_args_list), 1)
+            self.assertEqual(sum(call.args[1].get("task") == "bugs" for call in model.call_args_list), 0)
             lowered = deepcopy(first)
             lowered["report"]["module_growth_thresholds"]["玩法相关"] = .1
             after = run_report(self.root, lowered, "2026-10-19", "2026-10-22", False, "low-threshold", lambda **v: None)
             self.assertEqual(sum("feedbacks" in call.args[1] for call in model.call_args_list), 1)
-            self.assertEqual(sum("items" in call.args[1] for call in model.call_args_list), 1)
+            self.assertEqual(sum("items" in call.args[1] and call.args[1].get("task") != "bugs"
+                                 for call in model.call_args_list), 1)
+            self.assertEqual(sum(call.args[1].get("task") == "bugs" for call in model.call_args_list), 0)
             count = model.call_count
             run_report(self.root, lowered, "2026-10-19", "2026-10-22", False, "same-threshold", lambda **v: None)
             self.assertEqual(model.call_count, count)
@@ -40,6 +43,7 @@ class WorkflowTests(BaseTest):
             self.assertEqual(len(translation_calls[0].args[1]["feedbacks"]),4)
             self.assertEqual(result["total"],2)
             self.assertEqual(result["previous_total"],2)
+            self.assertFalse(any(call.args[1].get("task") == "bugs" for call in request.call_args_list))
             calls = request.call_count
             run_report(self.root,self.config,"2026-10-19","2026-10-22",False,"second",lambda **v:None)
             self.assertEqual(request.call_count,calls)

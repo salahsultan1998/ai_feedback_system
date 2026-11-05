@@ -34,7 +34,7 @@ def _version(text):
 
 def _parts(text):
     start = re.search(r"(?m)^## 有价值的玩家建议\n", text)
-    end = re.search(r"(?m)^## 反馈统计\n", text[start.end():]) if start else None
+    end = re.search(r"(?m)^## ", text[start.end():]) if start else None
     if not start or not end:
         raise ValueError("报告建议区结构已变化，无法安全修改。请重新生成报告。")
     end_offset = start.end() + end.start()
@@ -78,7 +78,7 @@ def initialize(folder, snapshot, analysis, markdown):
         raise ValueError("此报告的原始建议已保存，不能覆盖。")
     suggestions, sources = [], {}
     rows = ({str(row["反馈ID"]): row for row in snapshot["current"].fillna("").to_dict("records")}
-            if analysis["suggestions"] else {})
+            if analysis["suggestions"] or analysis.get("bugs") else {})
     for index, item in enumerate(analysis["suggestions"]):
         ids = list(dict.fromkeys(item["feedback_ids"]))
         if not ids or any(not isinstance(fid, str) or fid not in rows for fid in ids):
@@ -90,10 +90,27 @@ def initialize(folder, snapshot, analysis, markdown):
                             "translation_zh": str(row["中文翻译"])}
     if _texts(markdown, suggestions) != [item["text"] for item in suggestions]:
         raise ValueError("报告建议与原文快照不一致，无法保存人工核查资料。")
+    data = {"schema_version": 1, "suggestions": suggestions, "sources": sources}
+    if "bugs" in analysis:
+        from . import bug_review
+
+        bugs = bug_review.snapshot_entries(analysis["bugs"])
+        for item in bugs:
+            ids = item["feedback_ids"]
+            if not ids or any(not isinstance(fid, str) or fid not in rows for fid in ids):
+                raise ValueError("疑似 BUG 引用了不属于本期有效反馈的记录。")
+            for fid in ids:
+                row = rows[fid]
+                sources[fid] = {"feedback_id": fid, "original_text": str(row["用户自己填写的内容"]),
+                                "translation_zh": str(row["中文翻译"])}
+        parts = bug_review._parts(markdown)
+        if parts is None or bug_review._active(parts[1], bugs) != {item["code"]: item for item in bugs}:
+            raise ValueError("报告 BUG 清单与原文快照不一致，无法保存核查资料。")
+        data["bugs"] = bugs
     folder.mkdir(parents=True, exist_ok=True)
     # The original is never changed by later manual saves or restores.
     (folder / "report.original.md").write_text(markdown, encoding="utf-8")
-    atomic_json(folder / "review.json", {"schema_version": 1, "suggestions": suggestions, "sources": sources})
+    atomic_json(folder / "review.json", data)
 
 
 def prepare_existing(folder):

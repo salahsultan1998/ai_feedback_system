@@ -11,6 +11,7 @@
   },
   "ignored_labels": ["重复反馈", "玩家反馈不清楚", "无效反馈", "ignore","骂人","封禁"],
   "suggestion_labels": ["建议"],
+  "bug_labels": ["BUG"],
   "feishu": {
     "enabled": true,
     "webhook_env": "FEISHU_BALOOT_WEBHOOK",
