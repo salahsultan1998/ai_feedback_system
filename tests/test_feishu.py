@@ -58,11 +58,15 @@ class FeishuTests(TestCase):
         self.assertEqual(state(self.folder, self.config)["status"], "failed")
 
     def test_rejection_preserves_actual_service_message_without_webhook(self):
-        detail = "unsupported tag md " + os.environ["TEST_FEISHU_URL"]
-        with patch("feedback.feishu.send_payload", return_value={"code": 10002, "msg": detail}):
+        def reject(url, payload):
+            return {"code": 10002, "msg": f"unsupported tag md {url} {payload['sign']} https://example.com/private\n\t detail"}
+        with patch("feedback.feishu.send_payload", side_effect=reject) as sender:
             with self.assertRaisesRegex(ValueError, "unsupported tag md") as caught:
                 push(self.folder, self.config)
         self.assertNotIn(os.environ["TEST_FEISHU_URL"], str(caught.exception))
+        self.assertNotIn(sender.call_args.args[1]["sign"], str(caught.exception))
+        self.assertNotIn("https://example.com/private", str(caught.exception))
+        self.assertNotIn("\n", str(caught.exception))
         saved = state(self.folder, self.config)
         self.assertEqual(saved["error_code"], "10002")
         self.assertIn("unsupported tag md", saved["last_error"])
@@ -210,12 +214,18 @@ class FeishuTests(TestCase):
         self.assertEqual(sender.call_count, checkpoint["total_parts"] - 1)
         self.assertIn("（2/", sender.call_args_list[0].args[1]["card"]["header"]["title"]["content"])
 
-    def test_legacy_plain_text_send_can_be_upgraded(self):
-        (self.folder / "feishu_push.json").write_text('{"status":"sent","sent_at":"old"}')
-        self.assertEqual(state(self.folder, self.config)["status"], "ready")
-        with patch("feedback.feishu.send_payload", return_value={"code": 0}) as sender:
-            self.assertEqual(push(self.folder, self.config)["status"], "sent")
-        sender.assert_called_once()
+    def test_completed_legacy_messages_can_be_upgraded_to_native_cards(self):
+        for saved in ({"status": "sent", "sent_at": "old"},
+                      {"status": "sent", "format": "markdown-v1"},
+                      {"status": "sent", "format": "card-markdown-v1"}):
+            with self.subTest(saved=saved):
+                (self.folder / "feishu_push.json").write_text(json.dumps(saved))
+                self.assertEqual(state(self.folder, self.config)["status"], "ready")
+                with patch("feedback.feishu.send_payload", return_value={"code": 0}) as sender:
+                    result = push(self.folder, self.config)
+                self.assertEqual(result["status"], "sent")
+                self.assertEqual(result["format"], FORMAT)
+                sender.assert_called_once()
 
     def test_old_post_checkpoint_does_not_skip_card_parts(self):
         parts = report_parts(report_text(self.folder), "测试反馈报告")
@@ -227,20 +237,6 @@ class FeishuTests(TestCase):
         self.assertEqual(result["format"], FORMAT)
         sender.assert_called_once()
         self.assertEqual(sender.call_args.args[1]["msg_type"], "interactive")
-
-    def test_legacy_post_success_can_be_sent_as_card(self):
-        (self.folder / "feishu_push.json").write_text('{"status":"sent","format":"markdown-v1"}')
-        self.assertEqual(state(self.folder, self.config)["status"], "ready")
-        with patch("feedback.feishu.send_payload", return_value={"code": 0}) as sender:
-            push(self.folder, self.config)
-        sender.assert_called_once()
-
-    def test_old_markdown_card_can_be_manually_upgraded_to_configured_table(self):
-        (self.folder / "feishu_push.json").write_text('{"status":"sent","format":"card-markdown-v1"}')
-        self.assertEqual(state(self.folder, self.config)["status"], "ready")
-        with patch("feedback.feishu.send_payload", return_value={"code": 0}) as sender:
-            self.assertEqual(push(self.folder, self.config)["format"], FORMAT)
-        sender.assert_called_once()
 
     def test_retry_keeps_original_widths_after_config_change(self):
         text = "\n\n".join(f"| 模块 | 重点问题分析 |\n| --- | --- |\n| row-{i} | {'内容' * 130} |" for i in range(7))

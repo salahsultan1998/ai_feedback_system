@@ -24,8 +24,7 @@ class StatisticsTests(BaseTest):
         modules = self.counted_modules({"账号问题": (11, 10), "游戏卡顿": (11, 10)})
         self.assertTrue(modules["账号问题"]["flagged"])
         self.assertFalse(modules["游戏卡顿"]["flagged"])
-        self.assertEqual(modules["账号问题"]["growth_threshold"], .1)
-        self.assertEqual(modules["账号问题"]["delta"], 1)
+        self.assertEqual((modules["账号问题"]["count"], modules["账号问题"]["previous"]), (11, 10))
 
     def test_percentage_is_inclusive_without_count_floors(self):
         self.config["report"]["module_growth_thresholds"].update({"账号问题": .1, "游戏卡顿": .1, "充值": .5})
@@ -38,7 +37,7 @@ class StatisticsTests(BaseTest):
         self.config["report"]["module_growth_thresholds"].update({"账号问题": 2, "游戏卡顿": 0, "充值": 2, "其他": 0})
         modules = self.counted_modules({"账号问题": (1, 0), "游戏卡顿": (1, 2), "充值": (3, 1), "其他": (1, 1)})
         self.assertTrue(modules["账号问题"]["flagged"])
-        self.assertIsNone(modules["账号问题"]["rate"])
+        self.assertEqual(modules["账号问题"]["previous"], 0)
         self.assertFalse(modules["游戏卡顿"]["flagged"])
         self.assertTrue(modules["充值"]["flagged"])
         self.assertTrue(modules["其他"]["flagged"])
@@ -57,5 +56,5 @@ class StatisticsTests(BaseTest):
         modules = {item["label"]:item for item in snapshot["modules"]}
         self.assertTrue(modules["游戏卡顿"]["flagged"])
         self.assertEqual(modules["账号问题"]["count"],0)
-        self.assertEqual(modules["账号问题"]["rate"],-1)
+        self.assertEqual(modules["账号问题"]["previous"],2)
         self.assertEqual(sum(item["share"] for item in snapshot["modules"]),1)

@@ -26,11 +26,14 @@ def analyze_bugs(snapshot, config, cache_dir, progress, should_stop=None):
                 for row in current.to_dict("records")}
     meta = {"task": "bugs", "stage": "提取"}
 
+    def compact(items):
+        return [{"candidate_id": f"b{index}", **{key: item[key] for key in ("label", "categories", "text")}}
+                for index, item in enumerate(items)]
+
     def ask(batch, merging=False):
         check_stop(should_stop)
         candidates = {f"b{index}": item for index, item in enumerate(batch)} if merging else {}
-        inputs = ([{"candidate_id": cid, **{key: item[key] for key in ("label", "categories", "text")}}
-                   for cid, item in candidates.items()] if merging else batch)
+        inputs = compact(batch) if merging else batch
         allowed = set(candidates) if merging else {item["feedback_id"] for item in batch}
         field = "candidate_ids" if merging else "feedback_ids"
 
@@ -84,10 +87,6 @@ def analyze_bugs(snapshot, config, cache_dir, progress, should_stop=None):
     for item in unique(candidates):
         path = contexts[item["feedback_ids"][0]]
         groups.setdefault(path, []).append(item)
-
-    def compact(items):
-        return [{"candidate_id": f"b{index}", **{key: item[key] for key in ("label", "categories", "text")}}
-                for index, item in enumerate(items)]
 
     merge_meta = {**meta, "stage": "合并"}
     result = []

@@ -1,6 +1,5 @@
 """Read-only configuration; uploads and report creation are explicit actions."""
 from datetime import timedelta
-import json
 import os
 from pathlib import Path
 
@@ -79,19 +78,12 @@ def load_run(game, run):
     meta = storage.metadata(game, run)
     if meta["column_mapping"] != config["column_mapping"]:
         raise ValueError("列映射已变更，请重新上传文件。")
-    return storage.folder(game, run), config, meta, jobs
-
-
-@api.get("/games/<game>/uploads/<run>")
-def upload_metadata(game, run):
-    folder, config, meta, _ = load_run(game, run)
-    latest = folder / "progress.json"
-    return jsonify(**meta, latest_job=json.loads(latest.read_text())["job_id"] if latest.exists() else None)
+    return storage.folder(game, run), config, jobs
 
 
 @api.get("/games/<game>/uploads/<run>/preview")
 def preview(game, run):
-    folder, config, _, _ = load_run(game, run)
+    folder, config, _ = load_run(game, run)
     try:
         page = max(1, int(request.args.get("page", 1)))
     except ValueError:
@@ -112,14 +104,14 @@ def options():
 
 @api.post("/games/<game>/uploads/<run>/selection")
 def selection(game, run):
-    folder, config, _, _ = load_run(game, run)
+    folder, config, _ = load_run(game, run)
     _, info = prepare_selection(folder, config, **options())
     return jsonify(info)
 
 
 @api.post("/games/<game>/uploads/<run>/reports")
 def report(game, run):
-    folder, config, _, jobs = load_run(game, run)
+    folder, config, jobs = load_run(game, run)
     selected = options()
     _, info = prepare_selection(folder, config, **selected)
     if not info["ready"]:
@@ -188,8 +180,7 @@ def review_details(game, run, job):
     return jsonify(report_review.details(folder))
 
 
-@api.post("/games/<game>/uploads/<run>/jobs/<job>/review")
-def review_save(game, run, job):
+def save_review(game, run, job, reviewer, field):
     folder = completed_folder(game, run, job)
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
@@ -198,10 +189,15 @@ def review_save(game, run, job):
     if not lock.acquire(blocking=False):
         raise BusyError("正在保存或推送报告，请稍后再试。")
     try:
-        report_review.save(folder, data.get("version"), data.get("suggestions"))
+        reviewer.save(folder, data.get("version"), data.get(field))
         return report_response(folder, game, run, job)
     finally:
         lock.release()
+
+
+@api.post("/games/<game>/uploads/<run>/jobs/<job>/review")
+def review_save(game, run, job):
+    return save_review(game, run, job, report_review, "suggestions")
 
 
 @api.get("/games/<game>/uploads/<run>/jobs/<job>/bugs")
@@ -211,18 +207,7 @@ def bug_details(game, run, job):
 
 @api.post("/games/<game>/uploads/<run>/jobs/<job>/bugs")
 def bug_save(game, run, job):
-    folder = completed_folder(game, run, job)
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        raise ValueError("请求格式无效。")
-    lock = current_app.extensions["feishu_lock"]
-    if not lock.acquire(blocking=False):
-        raise BusyError("正在保存或推送报告，请稍后再试。")
-    try:
-        bug_review.save(folder, data.get("version"), data.get("bugs"))
-        return report_response(folder, game, run, job)
-    finally:
-        lock.release()
+    return save_review(game, run, job, bug_review, "bugs")
 
 
 @api.post("/games/<game>/uploads/<run>/jobs/<job>/push/feishu")

@@ -1,126 +1,113 @@
 # AI 反馈统计
 
-Local game-feedback reporting app. The homepage and game workspace share the same minimal design. The backup is reference material only; the new app never imports code, configuration, credentials or data from it.
+Local game-feedback reporting app: import feedback, translate and classify it, compare periods, review the report, and optionally push it to Feishu. Baloot is configured; Okey and 新疆 have placeholder pages.
 
 ## Run
 
 ```sh
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
+```
+
+Create `.env` in the project root:
+
+```dotenv
+OPENROUTER_API_KEY=your-openrouter-key
+# Optional model override:
+# OPENROUTER_MODEL=openai/gpt-4o-mini
+```
+
+```sh
 .venv/bin/python app.py
 ```
 
-Open http://127.0.0.1:5050. Optional `PORT` changes the port. This app is for one local user and one server process.
+Open [http://127.0.0.1:5050](http://127.0.0.1:5050). `PORT` optionally changes the port. Run one server process for one local user. Restart after changing `.env` or Python code. Credentials stay on the server; nothing is imported from `backup/`.
 
-Create `.env` in the project root using `.env.example` and set `OPENROUTER_API_KEY`. `OPENROUTER_MODEL` optionally overrides the model in `config/settings.json`. The API key is never sent to the browser. Existing credentials in `backup/` are not automatically used. Uploading, previewing and selecting dates do not call AI; generating a report does.
+## Use the app
 
-## Workflow
+1. Select Baloot and upload CSV or `.xlsx`. Only the first Excel sheet is read. The preview includes rows that will later be excluded.
+2. Select inclusive dates. October 19–22 compares with October 12–15, exactly seven days earlier. Only records in either period enter AI processing; overlapping records are processed once and counted in each applicable period.
+3. Check the counts and coverage warning. If the export does not span both periods, generation requires confirmation that it is complete and the missing boundary dates truly had no feedback. Days without records alone do not prove an incomplete export.
+4. Generate the report. **Stop** lets in-flight requests finish and saves successful results. Retry the same upload to reuse them. Every selected record must finish successfully before a report is exported.
+5. Review the report or download `report.md` and `feedback_details.xlsx`. Optionally use **编辑建议** or **审核 BUG**, save the changes, then push to Feishu.
 
-1. Select Baloot. Okey and Xinjiang have placeholder pages until their own configuration is ready.
-2. Upload CSV or `.xlsx`. Only the first Excel sheet is used. A paginated, scrollable preview displays the original source fields, including excluded rows.
-3. Select inclusive start and end dates. October 19–22 includes all of October 22 and compares against October 12–15, exactly seven days earlier.
-4. Review current, comparison, excluded and out-of-range counts. Only the union of the two periods enters translation/classification. Gaps between periods are ignored. For periods longer than seven days, overlapping records are processed once and counted independently in each period.
-5. Generate the report. Translation/classification saves each completed batch. Stop lets in-flight requests finish, saves their work and prevents subsequent requests. Retry the same upload to reuse matching results.
-6. Read the report preview or download `report.md` and `feedback_details.xlsx`. Excel contains **本期反馈明细** and **上周同期反馈明细**, with original text, Chinese translations, categories and source fields.
-7. Before pushing to Feishu, optionally choose **编辑建议** to check the source feedback and correct suggestion wording. Save the changes, then push the reviewed report.
+Uploading, previewing, selecting dates and manual editing make no AI calls. Generating reports uses the configured paid API. For a sample, upload `examples/feedback_sample.csv` and select **2026-10-19 through 2026-10-22**.
 
-The workspace keeps file/date controls together, uses Data/Report tabs, and scrolls long tables and reports inside their panel. Completed reports open automatically in the Report tab, with downloads in its toolbar.
+A refresh opens a clean workspace but keeps saved files and does not cancel a running task. A server restart marks unfinished tasks interrupted.
 
-Use `examples/feedback_sample.csv` for upload/preview testing and select **2026-10-19 through 2026-10-22**. All sample messages and IDs are artificial. Generating even a sample report uses the configured paid API; automated tests mock it.
+## Data and report rules
 
-### Manually review suggestions
+- Required columns are `反馈ID`, `用户自己填写的内容` and `反馈时间`. Optional source fields are `用户ID`, `VIP等级`, `附加信息`, `反馈标签` and `用户主动选择的标签`. Per-game `column_mapping` maps source headers to these names.
+- IDs remain strings, including leading zeros. Empty IDs/text, invalid dates, ignored source labels and duplicate IDs are excluded; the first valid instance of an ID is retained. Different IDs with identical text remain separate records. `ignored_labels` matching ignores case.
+- Dates follow source-system local time. Uniform timezone offsets retain wall-clock dates; mixed timezone formats must be normalized before upload.
+- AI returns a Chinese translation, a strict validity decision and one validated I/II/III category path. Python computes counts, shares and period changes. Short, understandable feedback remains valid. Unclear feedback is excluded from statistics and preserved with its reason in **排除反馈明细**. Feedback containing actual abuse is excluded in full from analysis, statistics and every Excel sheet; its processing decision remains cached for retries.
+- Suggestion and BUG candidates come only from valid current-period rows whose original `反馈标签`, after trimming, exactly matches `suggestion_labels` or `bug_labels`. Matching is case-sensitive; Baloot uses `["建议"]` and `["BUG"]`. The player-selected tag and any model-supplied suggestion flag do not control candidacy.
+- Suggestions merge equivalent requests within one I category and retain their supporting feedback IDs. BUG analysis merges equivalent malfunctions only within the same complete category path, retaining every recognized issue and contributor without a top-N cutoff. Both pools are independent of module growth thresholds; no candidates means no corresponding analysis requests.
+- The report contains an overview, evidence-linked suggestions, suspected BUGs when enabled, and module statistics. Report text is Chinese; original-language source text remains available in the review editor and detail exports. Suggestions, BUGs and issue analysis cite **feedback IDs**.
+- Excel contains **本期反馈明细** and **上周同期反馈明细**, plus the excluded sheet when needed. Its nine valid-detail columns retain IDs, source text, translation and other detail fields. I/II/III paths appear in two category columns, for example `玩法相关 | 活动（许愿树）`. Statistics aggregate by I category. Source labels and the internal suggestion flag are omitted from new exports.
 
-The Report toolbar includes **编辑建议**. Each suggestion has an editable text box, fixed feedback IDs, and read-only player originals beside their AI Chinese translations. The first cited source is shown immediately; **展开其余 N 条来源** reveals every remaining reference, including all contributors to merged suggestions. Arabic and other source text follow their own writing direction. Original text is displayed as plain text.
+Game categories, terminology and extraction rules live in `config/<game>/labels.json` and `prompts/`; update those sources rather than duplicating them in code.
 
-**保存修改** updates only the suggestion wording in the actual `report.md`; preview, Markdown download and the Feishu push all use that saved version. It does not rerun AI, change counts or categories, or change the Excel translation details. **取消** discards the current drafts. **恢复原始建议** puts the original AI wording back into the editor; click Save to apply it. Changed saved reports display **已人工修改**. Wording is limited to 2,000 characters per suggestion and uses the report's existing Chinese language validation. Newlines become spaces in the report's single-paragraph suggestion list.
+## Review before pushing
 
-The editor saves against the version it opened, rejecting stale saves instead of overwriting newer edits. Pending edits block Markdown downloads and Feishu pushes until saved or canceled. Once Feishu push preparation begins, the report is permanently locked for editing, including failed or interrupted detail uploads and partly sent messages. This keeps resumed messages consistent. Invalid Feishu credentials or width configuration detected before push preparation do not freeze the report.
+**编辑建议** changes suggestion wording while keeping its evidence fixed. **审核 BUG** also lets you exclude an issue or remove an incorrectly attributed source. Saving BUG edits recalculates that section's issue and distinct-feedback counts. Neither editor changes module statistics or the Excel export, and neither calls AI.
 
-New reports preserve their original Markdown in `report.original.md` and their report-specific suggestion evidence in `review.json`. These sources are not read from later processing checkpoints. Older unpushed reports that already cite feedback IDs can recover the snapshot from their own completed Excel current-period detail sheet. If IDs or required source fields cannot be verified, editing remains unavailable with an explanation; older user-ID-only reports require regeneration. Saved reports and references remain on disk under the existing storage retention rules.
+Each description is limited to 2,000 characters and must follow the Chinese report rules. **保存修改** updates the saved Markdown used by preview, download and Feishu. **取消** discards drafts; **恢复原始建议 / 恢复原始 BUG** restores the original into the draft and requires Save to apply. Removed BUG candidates remain recoverable with their stable codes and original sources.
 
-### Review suspected BUG feedback
+Saves reject stale report versions. An open editor blocks Markdown downloads and pushes until saved or canceled. Once Feishu push preparation starts, the report is permanently locked for editing, including failed detail uploads and partially sent messages, so resumed parts use consistent content.
 
-Baloot also generates **疑似BUG 反馈（待核实）** between suggestions and the statistics table. Its independent analysis scans only valid current-period feedback whose original `反馈标签`, after trimming whitespace, exactly matches an entry in the game's `bug_labels` setting (Baloot: `["BUG"]`). Matching is case-sensitive; the player-selected tag and feedback body do not decide candidacy. With no matching valid feedback, BUG analysis makes no model requests. Growth thresholds do not restrict this candidate pool. It extracts concrete suspected malfunctions and merges equivalent problems within the same complete category path, retaining every supporting feedback ID. Distinct problems are not reduced to a top-N list. This adds cached report-analysis requests only for BUG candidates, without retranslating feedback or changing classification, valid-feedback totals, module statistics or Excel details. Completed reports are not changed automatically.
+New reports preserve immutable originals in `report.original.md` and evidence in `review.json`. Older unpushed reports that cite feedback IDs can recover suggestion evidence from their own completed current-period workbook sheet. Missing/unverifiable sources and user-ID-only reports require regeneration; old reports without a BUG snapshot cannot acquire BUG review evidence from later processing caches.
 
-Choose **审核 BUG** to compare each issue with its original feedback and AI translations. Edit the description, uncheck **保留此问题** to exclude a mistaken issue, or uncheck **保留此条反馈** to remove an incorrect reference. Saving recalculates issue counts and distinct feedback counts in the BUG section; the module table stays unchanged. Stable `BUG-001` codes and immutable source snapshots keep removed issues recoverable. **恢复原始 BUG** restores the original candidates in the draft; Save applies the restoration. BUG and suggestion editing share the existing version checks, unsaved-draft protection and push lock. The saved MD is also used for preview, download and Feishu.
+## Configuration
 
-The game-specific extraction/merge rules live in `config/baloot/prompts/bugs.md`, with the existing Chinese-report and terminology rules appended. A game enables this independent stage by providing its own `prompts/bugs.md`. Changing these rules invalidates matching BUG analysis caches, not translation/classification caches. BUG analysis uses the existing `ai_max_input_chars` budget and supports stopping/retry. Large sets of distinct issues can need additional merge comparisons; no recognized candidate is silently dropped to force a shorter report.
+Configuration is repository-managed; the app has no settings editor or configuration-write API. Global settings are overridden by `config/<game>/settings.json`; `OPENROUTER_MODEL` overrides the configured model.
 
-## Coverage and data rules
+| File | Controls |
+| --- | --- |
+| `config/settings.json` | Model, batching, concurrency, retries, timeouts, import and period limits |
+| `config/games.json` | Game names, images and enabled state |
+| `config/<game>/settings.json` | Source columns, ignored/candidate labels, game overrides and Feishu settings |
+| `config/<game>/report_rules.json` | Growth thresholds, suggestion/issue/evidence limits and analysis input budget |
+| `config/<game>/labels.json` | Category hierarchy, exclusion reasons and terminology |
+| `config/<game>/prompts/*.md` | Classification, suggestion, issue and optional BUG instructions |
 
-- Expected columns: 反馈ID, 用户ID, VIP等级, 用户自己填写的内容, 附加信息, 反馈时间, 反馈标签, 用户主动选择的标签. Only 反馈ID, 用户自己填写的内容 and 反馈时间 are required. Configure source-column mappings per game.
-- IDs are strings. Empty IDs/messages, invalid dates, ignored source labels and repeated IDs are excluded; the first valid instance of an ID is retained. Different IDs with the same message remain separate records.
-- Dates follow the source system's local time; uniform timezone offsets retain wall-clock dates. Mixed timezone formats are rejected for clarification rather than silently shifted.
-- Coverage inferred from earliest/latest record dates cannot prove a complete export. Days without records are surfaced for review, not assumed missing. If a required boundary is outside the observed range, report generation is blocked unless the uploader explicitly confirms a complete export with genuinely empty boundary dates. A confirmed empty comparison period is counted as zero and identified in the report's coverage note.
-- Every selected valid record must be processed successfully before export. AI failure never silently produces a partial report.
-- Each record gets one I 类别 (`label` / 最终标签), an optional II 类别 (`theme` / 具体主题), and an optional III 类别 (`subtheme` / 三级主题). Third-level choices live in the selected second-level node's `children` list. Every complete path is validated against the configured parent; bracketed display text is never stored as a category name. AI generates translations and evidence-linked text; Python calculates counts, shares, changes and threshold flags. Suggestions use current-period feedback across all categories.
-- Classification returns a strict boolean `is_valid`. The backend derives 是否建议 solely from an exact, whitespace-trimmed match of the original 反馈标签 against `suggestion_labels` in the game settings (Baloot: `["建议"]`); it ignores any model-supplied `is_suggestion`. The player-selected tag is not used for this decision. Only valid current-period records with that source label enter the suggestion candidate pool. The model then filters and merges concrete, valuable product suggestions from that pool. Candidates retain their product module and are counted as a subset of valid records, never added again to module totals. “建议” is not a category or subcategory.
-- The valuable-suggestions section merges equivalent requests within the same module and shows deduplicated 用户 ID mapped from the source records, preserving leading zeros. Different requests in one module remain separate, and cross-module merges are rejected. Missing user IDs are shown as 未提供, never replaced with feedback IDs. Feedback IDs remain internal references for suggestions; the issue-analysis table still shows feedback IDs. Extraction keeps all identified supporting references, and a consolidation pass runs whenever multiple candidates remain. Compact candidate references preserve all contributors across bounded merge batches. The `max_evidence_ids` limit continues to apply to issue analysis, not to the contributors shown for a merged suggestion. Changing these suggestion instructions invalidates suggestion-analysis caches without changing the classification rules.
-- Clear but short feedback is retained. Unintelligible text or feedback lacking an identifiable object/request is marked invalid with a configured reason; the original and translation remain in the processing checkpoint. Such records are excluded from both periods' totals and percentage denominators. An optional third Excel sheet, 排除反馈明细, preserves their original text and reasons; it is not pushed into the valid Feishu detail tab. Any feedback containing actual abusive language is instead marked invalid with 含辱骂内容 and removed in full, even if it also includes useful suggestions or substantive complaints. It is excluded from all report analysis, counts, shares, and every Excel sheet, including 排除反馈明细. Abuse detection shares the existing translation/classification call; there is no extra model call. Processing checkpoints retain the decision for retries. The UI reports semantic and abusive exclusions separately. A period reduced to zero valid records is supported.
-- Baloot has six I 类别: 账号问题, 游戏卡顿, 玩法相关, 充值, 作弊, 其他. 玩法相关 retains the direct game modes plus 活动, 游戏限制, 发牌&公平, 段位与赛季 and 俱乐部 as II 类别; the first four groups have III 类别. 战绩记录 maps to 其他 → 个人信息页面, album requests to 其他 → 相册功能, and remaining ban/mute appeals to 其他 → 封禁. Unlisted recharge requests use 充值 → 其他充值问题. Confirmed terminology includes 对局规则举报, 打光头 and the English term project. Source tags are hints for module classification; they do not replace the body. Suggestion candidacy is the separate source-label rule above. Billing amount disputes use the team's 充值未到账 bucket without adding a nonexistent non-delivery claim to the translation.
-- Report suggestion/issue prompts always include a shared Chinese-only rule: translate Arabic names/quotations into Chinese, use a neutral Chinese description when a name cannot be identified, and never append the original Arabic wording. Common English abbreviations remain allowed. AI report text is validated before caching and retried through the normal retry policy; the final Markdown is also checked for Arabic characters (including presentation forms and HTML entities) before publishing. This rule covers the browser report and Feishu card derived from it. Original Arabic feedback in Excel/Feishu detail rows is preserved. Updating this shared report rule invalidates report-analysis caches, not the per-record translation/classification cache. Already completed report files are not rewritten automatically.
+Current global defaults:
 
-Excel exports use I 类别 and II 类别 headers. Three-level paths are displayed in two columns, for example `玩法相关 | 活动（许愿树）`; a leaf second-level category remains plain, such as `玩法相关 | 俱乐部`. Statistics aggregate by I 类别, while issue analysis keeps distinct II/III paths separate. Suggestion consolidation receives the full category context so unrelated requests under the broader roots are not conflated. Feishu reads this same display format; previous headers remain accepted without changing existing push fingerprints.
+| Settings | Values |
+| --- | --- |
+| `model` | `openai/gpt-4o-mini` |
+| `classification_batch_size`, `classification_batch_max_chars` | 30 records, 26,000 serialized input characters |
+| `concurrency` | 200 simultaneous classification requests |
+| `max_retries`, `retry_delay`, `timeout_seconds` | 3 retries, 2-second delay, 60-second timeout |
+| `max_upload_mb`, `max_rows`, `max_expanded_xlsx_mb` | 32 MB upload, 100,000 rows, 128 MB expanded Excel |
+| `preview_page_size`, `max_report_days`, `csv_encoding` | 50 rows, 31 days, `utf-8-sig` |
 
-Report changes use ↑ / ↓ for increases/decreases, with signed percentages such as +20.0% / -10.0%, in both the overview and module table. Flat comparisons show 持平; a zero previous-period baseline retains the 新增 label.
+Batch size and character budget must be positive integers. Long records reduce the effective batch size; a record larger than the budget is sent alone without truncation. Successful entries are checkpointed before retrying only unresolved entries. Progress counts completed records, not requests. Provider errors appear in task progress and server logs; fix the cause before retrying. HTTP 401/402/404 stop later batch groups, while 403 can be specific to one batch. Lower concurrency if the provider rate-limits requests.
 
-## Repository configuration only
+Baloot's report rules currently allow 10 suggestions, analyze up to three issue themes per flagged module, cite up to three evidence IDs per issue analysis, and use a 12,000-character analysis input budget. The issue evidence limit does not truncate merged suggestion or BUG contributors.
 
-### Batch translation and classification
+Each I category needs a finite, nonnegative `module_growth_thresholds` value; Baloot currently uses `0.3` (30%) for all six categories. A module with current feedback is flagged when `(current - previous) / previous >= threshold`. Any positive count on a zero previous baseline is new and flagged. A zero threshold includes flat positive counts; declines are not flagged. No minimum count or absolute increase is required.
 
-Translation and classification share one request per batch. Global defaults in `config/settings.json` are:
+Tasks capture their configuration and completed reports save `config_snapshot.json`. Model, classification prompt, taxonomy or source suggestion-rule changes can require reprocessing; batch-size/concurrency changes reuse matching record results. Report-only changes reuse translations and invalidate only affected analysis caches. Completed reports are never rewritten automatically. To add a game, provide its own settings, taxonomy and required prompts, then enable it in `games.json`; `prompts/bugs.md` enables BUG analysis.
 
-```json
-"classification_batch_size": 10,
-"classification_batch_max_chars": 16000
+## Feishu
+
+Pushes are manual. When spreadsheet sync is enabled, the app writes the detail tab first, then sends the saved report as native-table cards with a link to the details. Long cards are split under an 18,000-byte request budget with at most five tables per part; every table cell is retained. No AI call or file attachment is involved.
+
+Baloot already enables webhook and spreadsheet integration in its game settings. Supply the corresponding environment variables in `.env` and verify the configured spreadsheet destination:
+
+```dotenv
+FEISHU_BALOOT_WEBHOOK=https://open.feishu.cn/open-apis/bot/v2/hook/your-webhook-id
+FEISHU_APP_ID=your-app-id
+FEISHU_APP_SECRET=your-app-secret
 ```
 
-Both settings must be positive integers. Set either key in `config/<game>/settings.json` to override the global default for that game. `classification_batch_size` is the maximum number of uncached feedback records in one request; `concurrency` is the maximum number of simultaneous requests. With batch size 10 and concurrency 3, up to 3 requests containing up to 10 records each can run together. The last batch may be smaller.
+Other games can use their own environment variable names. If the bot requires signatures, set `feishu.secret_env` to an additional environment variable containing its signing secret. Bot keyword/IP restrictions must permit the outgoing message and server.
 
-The serialized feedback input also has a character budget (`classification_batch_max_chars`, measured as characters, not tokens, and excluding the shared system prompt). Long feedback can reduce the effective batch size. A single record larger than this budget is sent alone, in full; source text is never truncated. Model context/output limits still apply. Setting the batch size to 1 retains one-record requests using the same batch protocol.
-
-Every input includes its string feedback ID; each returned translation and label is validated against the matching ID and game taxonomy. Response ordering is irrelevant. Unknown or non-string IDs are ignored, and duplicate, missing or invalid entries remain unresolved. Successful entries are saved as soon as each response is validated, before another attempt. Retries submit only unresolved entries within the existing `max_retries` budget; they never silently publish an incomplete report. Progress counts successfully processed feedback records, not requests. Stop saves completed work and prevents subsequent attempts/batches.
-
-Failed tasks show the underlying HTTP status and provider reason in the progress message, and write warnings to the Flask terminal. Error summaries hide credentials, input bodies and raw moderation metadata. HTTP 401/402/404 stop subsequent batch groups after current requests finish; a 403 can concern one batch's content, so other batches can still save their results. A 0/N progress count means no feedback has a successful result, even if requests have already failed. Fix the reported cause before retrying the same upload; changes to `.env` require restarting Flask. Earlier task records retain the error detail that was saved when they ran.
-
-Within the current result protocol, per-record caches remain valid across batch-size/concurrency changes. Processing fingerprints include the protocol version, game, model, expanded classification prompt, batch protocol and feedback content; changing classification rules or the model can require reprocessing. Batch input/output instructions are added at request time and share the per-game classification rules. No extra paid call is made to merge translation batches.
-
-The three-level/source-suggestion/abuse protocol is versioned separately: earlier cached results must be reprocessed to apply the new hierarchy, abuse check and source-label decisions. A missing 三级主题 field is not assumed to be an empty third level. Changes to `suggestion_labels` also invalidate affected processing fingerprints. New results (including properly excluded records) are reused across batch-size changes and retries. 是否建议 (是/否) remains an internal source-label candidate marker used for report analysis; it is omitted from new Excel exports and their Feishu detail tabs. New exports omit 原标签, 用户主动选择的标签 and 是否建议 from all sheets; source labels remain available internally for classification. Completed older exports retain their original 10-, 11- or 12-column shape and headers when pushed, preserving their existing checkpoint fingerprints. Existing generated reports are not rewritten.
-
-### Manual Feishu notifications
-
-Completed reports show a “一键推送到飞书” button beside downloads. The server sends the complete report as `interactive` cards with schema `2.0`, a blue header, Markdown text and native `table` elements. The card uses `config.width_mode: "fill"` to adapt to the chat width. Table conversion happens only when pushing; the saved Markdown, browser preview and Excel remain unchanged. Headings, lists, statistical notes and every table cell are retained, including feedback IDs. Long reports become numbered cards under an 18,000-byte serialized request budget (below Feishu's 20 KB limit), measured after converting tables to their actual JSON payload; each card contains at most five native tables. Table headers repeat on continued tables. Exceptionally large individual rows become labeled paragraphs without dropping their cell contents. HTML cell breaks become newlines inside native cells. Local Excel links become an instruction to download in the app; no file attachments are sent. No additional AI request is made.
-
-Column widths are configured by header name in `config/<game>/settings.json`, under `feishu.card.table_column_widths`. Baloot currently uses these proportions:
+For a new integration, configure `feishu` in the game's `settings.json`:
 
 ```json
-"card": {
-  "table_column_widths": {
-    "反馈模块": "12%",
-    "本期数量": "16%",
-    "上周同期数量": "12%",
-    "变化": "16%",
-    "重点问题分析": "44%"
-  }
-}
-```
-
-Each width supports `auto`, integer pixels from `80px` to `600px`, or integer percentages from `1%` to `100%`. For the five current report columns, keep percentages totaling 100% to fill the available width. Unknown column headers use `auto`; the shared defaults above apply when a game omits overrides. Header text is left aligned; cell alignment follows the Markdown separator, so the current report's columns all stay left aligned. Row heights adapt to content up to 999px; Feishu may clip taller cells, with the remaining text available on hover/tap. Tables display at most ten rows per page, with further rows available through the table's pagination. Automatic row heights require Feishu 7.33 or later. These settings follow the official [table component](https://open.feishu.cn/document/feishu-cards/card-json-v2-components/content-components/table) and [JSON 2.0 card structure](https://open.feishu.cn/document/feishu-cards/card-json-v2-structure). Restart the server after updating the Python code; later JSON width edits apply to the next new push. A partially accepted push keeps its original widths when resumed.
-
-In `config/<game>/settings.json`, configure `"feishu": {"enabled": true, "webhook_env": "FEISHU_BALOOT_WEBHOOK"}` and put the real URL in the root `.env` as `FEISHU_BALOOT_WEBHOOK=https://open.feishu.cn/open-apis/bot/v2/hook/...`. Use a different environment variable per game. If the bot requires signatures, add `"secret_env": "FEISHU_BALOOT_SECRET"` to its configuration and set that variable in `.env`. Restart the app after changing `.env`. The actual credentials stay out of browser responses and report configuration snapshots. Robot keyword and IP restrictions must also match the outgoing message and server.
-
-Successful sends are recorded in each report folder as `feishu_push.json`; repeated requests do not send again. Each accepted part is checkpointed, so retries resume at the first unconfirmed part. Explicit bot rejection can be retried after correcting configuration. A timeout or interrupted send is marked unknown; check the group first, then use “确认本段未收到，继续推送” only if that part did not arrive. Completed reports previously sent as Markdown-only cards, plain-text summaries or `post` messages can be manually sent again with native tables. A partly accepted `card-markdown-v1` push finishes its remaining parts with its original layout, preserves already accepted parts and remains marked successfully sent. Generate a new report to use native tables after completing that older send. Sending is manual, never automatic after report generation. If Python's CA store rejects the server certificate before sending, the app falls back to system curl with certificate verification enabled. curl must be on the app's PATH for this fallback; credentials are passed via standard input, not command arguments.
-
-There is no web settings editor or configuration-write API.
-
-### Add report details to an existing Feishu spreadsheet
-
-Baloot is configured in `config/baloot/settings.json` with its Wiki URL and the spreadsheet token supplied for that document and checked through the metadata API (title: 用户反馈). The current app lacks Wiki node read permission, so the explicit token avoids needing Wiki resolution. The normal “一键推送到飞书” action now writes the detail tab first, then sends the report card containing “打开完整反馈明细”. Report generation itself does not send or upload anything.
-
-Each game can independently configure:
-
-```json
-"feishu": {
+{
   "enabled": true,
   "webhook_env": "FEISHU_BALOOT_WEBHOOK",
   "spreadsheet": {
@@ -133,60 +120,50 @@ Each game can independently configure:
 }
 ```
 
-For a Wiki URL, the application resolves the underlying `sheet` with the Wiki node API. This additionally needs one of `wiki:node:read`, `wiki:wiki:readonly` or `wiki:wiki` and access to the node. Alternatively, set `spreadsheet_token` to the verified underlying spreadsheet token alongside the Wiki `url`. A Wiki node ID is not a spreadsheet token. Direct `/sheets/` URLs do not need Wiki access.
+Publish the Feishu application, enable Sheets editing permission (`sheets:spreadsheet`), and add it to the target spreadsheet as an editable document application. A `/wiki/` URL also needs Wiki node read access unless `spreadsheet_token` supplies the verified underlying sheet token. A Wiki node ID is not a spreadsheet token. Direct `/sheets/` URLs need no Wiki resolution.
 
-Store the real `FEISHU_APP_ID` and `FEISHU_APP_SECRET` in `.env`, enable the Sheets editing API permission (`sheets:spreadsheet`), publish the application and add it to the destination spreadsheet as an editable document application. Game configurations contain environment variable names, not credentials. Games can share the application or name different credential variables. No new upload/import permission is needed for this approach.
-
-The completed Excel export is read without changing it. Its two valid-detail sheets are combined into one new tab, retaining all detail columns (9 for new reports, 10/11/12 for older reports) and adding 统计期间 (本期/上周同期). An optional excluded-feedback sheet is not included in that tab. Feedback belonging to both periods remains in both labeled groups. IDs are kept as text; dates are numeric date values with a date format. Rows are written in bounded batches, with at most 5,000 rows per request. New tab names contain only the report date range, such as `2026.10.19-2026.10.22`. If a different report or an existing tab already occupies that name, the push stops with a rename instruction instead of overwriting it. Retrying the same report resumes its saved tab, including older tabs created with an identifier suffix; existing tabs are not renamed. This writes data and basic header/date formats; it does not copy all Excel styling or create a downloadable attachment.
-
-Date formatting uses the API-verified `yyyy/MM/dd HH:mm:ss` value, preserving the time component. The API rejects the hyphenated `yyyy-mm-dd` and `yyyy-MM-dd HH:mm:ss` strings with `90204 invalid formatter`, even though similar formats may work in Excel or the Feishu UI. The `@` text formatter is also verified and protects leading-zero IDs. A formatting failure leaves the saved row offset unchanged; retrying the same report reuses its tab.
-
-`feishu_sheet.json` in each report folder stores the target, reserved tab title/ID, row progress and completion state, never the application secret or access token. If tab creation times out, the next attempt looks up the persisted title before creating anything. If writing times out, the last unconfirmed range is overwritten on retry. Confirmed ranges are skipped. Changing the destination or completed export after a push has started is rejected; generate a new report or restore that report's original configuration. Do not remove checkpoint files to retry: use the push button. Keep storage backed up if you need duplicate protection across restarts.
-
-Use this read-only connection check (does not create tabs or send group messages):
+Check the connection without creating tabs or sending messages (this contacts Feishu):
 
 ```sh
 .venv/bin/python -B -m feedback.feishu_sheets --check baloot
 ```
 
-| File | Purpose |
-| --- | --- |
-| `config/settings.json` | Model, translation/classification batch size and input budget, concurrency, retries, timeouts, upload/row limits, report-length limit |
-| `config/games.json` | Homepage names, icons, enabled games |
-| `config/baloot/settings.json` | Column mapping and ignored labels |
-| `config/baloot/report_rules.json` | Trend thresholds, suggestion/issue/evidence limits and AI input budget |
-| `config/baloot/labels.json` | Fixed three-level categories (`themes` / `children`) and Arabic game terms |
-| `config/baloot/prompts/*.md` | Classification, suggestions and issue-analysis instructions |
+The detail tab combines both valid Excel sheets and adds `统计期间`; overlapping records appear in both groups. The excluded sheet is not uploaded. New tabs use a date-range title such as `2026.10.19-2026.10.22`. A title collision stops the push rather than overwriting another report; rename the existing tab before retrying. `batch_rows` supports 1–5,000 rows. IDs retain their text format; dates use the API-supported `yyyy/MM/dd HH:mm:ss` formatter. Older supported 10/11/12-column workbooks retain their original columns when pushed.
 
-Each I 类别 has its own `module_growth_thresholds` entry in `report_rules.json`. Values are relative growth rates: `0.1` means 10%, `0.5` means 50%, and `2` means 200%. The six defaults are 0.5; edit each value to suit its priority. A category with current feedback enters issue analysis when `(current - previous) / previous >= its threshold`, with no minimum current count or minimum absolute increase. A zero previous count with any positive current count is treated as new and triggers analysis without inventing a percentage. A threshold of 0 also includes flat positive counts; declining categories do not trigger. Every I 类别 must have a finite nonnegative numeric threshold. Threshold-only changes reuse matching translation/classification results and existing analysis caches where applicable.
+Table widths are keyed by column header under `feishu.card.table_column_widths`. Values support `auto`, `80px`–`600px` or `1%`–`100%`. Baloot's current widths are **12% / 16% / 16% / 18% / 38%** for module, current, previous, change and analysis. The shared fallback is **12% / 16% / 12% / 16% / 44%**; unknown headers use `auto`. Width edits apply to new pushes, while started pushes retain their saved widths.
 
-Changes apply to the next report. Each task captures its configuration and each successful report saves it privately alongside its exports. Changing the model, classification prompt or labels invalidates affected translations. Report-only changes do not retranslate. To add a game, create its own configuration following Baloot's structure, then enable it in `games.json`; do not reuse Baloot terminology unchanged.
+Push checkpoints preserve safe retries:
+
+- `feishu_push.json` records accepted card parts. Repeated completed pushes do not resend. Explicit rejection can be retried after correcting configuration. For an unknown result after a timeout or interruption, inspect the group first; use **确认本段未收到，继续推送** only when that part did not arrive.
+- `feishu_sheet.json` records the reserved tab and confirmed row offset. A retry reuses the same tab, including older names with identifier suffixes, and rewrites only unconfirmed ranges. Changing that report's destination or completed export is rejected; restore the original or generate a new report.
+- Partially accepted `card-markdown-v1` sends resume with their original content/layout. Completed older formats may be offered a new native-table push; follow the app's saved state. Never delete checkpoint files to force a retry.
+
+HTTPS certificate verification remains enabled. If Python's certificate store fails, the app can use system `curl`; keep it on `PATH`. Credentials are passed through standard input rather than command arguments.
 
 ## Code and storage
 
-`feedback/` contains domain logic; `web/` contains page/API routes; `templates/` and `static/` contain the shared presentation. `app.py` builds the application. `feedback/workflow.py` is the single reporting workflow.
+`app.py` builds the application. `web/` owns routes, `feedback/workflow.py` coordinates reporting, and the other `feedback/` modules handle import, processing, analysis, review, exports and Feishu. Both editors share snapshot, version and lock handling in `feedback/review_state.py`. `templates/` and `static/` contain the presentation.
 
 ```text
 storage/<game>/<upload-id>/
-  source.csv (or source.xlsx)   Original uploaded bytes
-  rows.csv                     Normalized source fields for preview/selection
-  upload.json                  File metadata
-  processed.csv                Saved processing results for this upload
-  progress.json                Latest job reference
-  jobs/<job-id>.json            Persisted job status
-  analysis_cache/               Reusable successful report-AI responses
+  source.csv or source.xlsx
+  rows.csv
+  upload.json
+  processed.csv
+  jobs/<job-id>.json
+  analysis_cache/
   reports/<job-id>/
     report.md
-    report.original.md           Original report before manual edits
-    review.json                  Immutable suggestion texts and cited source feedback
-    review.lock.json             Created when Feishu push preparation begins
+    report.original.md
+    review.json
+    review.lock.json          # Created when push preparation begins
     feedback_details.xlsx
     config_snapshot.json
+    feishu_push.json          # Created when sending cards
+    feishu_sheet.json         # Created when syncing details
 ```
 
-Uploads and report runs are isolated; a new report cannot overwrite a completed one. Matching translations are reused within an upload, not across separately uploaded files. A refresh opens a clean workspace and clears the on-screen file, preview, dates and report; saved files remain on disk. Refreshing does not cancel an active background task. A server restart marks unfinished tasks interrupted. Run only one app process against a storage folder.
-
-`storage/`, `.env`, `.venv/`, and `backup/` are excluded from Git. Nothing in storage is served as a public static folder. Back up storage and configuration if you need to preserve uploads/reports. No database or automatic deletion is used.
+Uploads and report runs are isolated. Record results are reused within an upload, not across separate uploads. Storage is private and is not served as a static folder. There is no database or automatic deletion: back up storage and configuration to retain reports and duplicate-send protection across restarts. `.env`, `.venv/`, `storage/` and `backup/` are excluded from Git. Never run multiple app processes against the same storage folder.
 
 ## Verification
 
@@ -195,4 +172,4 @@ Uploads and report runs are isolated; a new report cannot overwrite a completed 
 node tests/test_game_ui.cjs
 ```
 
-Tests use temporary files and simulated AI responses; they make no paid requests. They cover CSV/Excel import, IDs, exclusions, weekly date alignment, selected rows, retries/reuse, stopping, statistical thresholds, evidence IDs, exports and the HTTP workflow.
+Node is needed only for the JavaScript interaction checks. Tests use temporary files and simulated AI/Feishu responses; they make no paid model calls or real pushes.

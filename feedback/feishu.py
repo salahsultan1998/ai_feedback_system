@@ -10,11 +10,13 @@ import shutil
 import ssl
 import subprocess
 import time
-from urllib.request import Request, build_opener, HTTPRedirectHandler
+from urllib.request import Request, build_opener
 from urllib.error import HTTPError, URLError
 
 from .storage import atomic_json
-from . import feishu_cards, feishu_sheets, report_review
+from . import feishu_cards, feishu_sheets
+from .review_state import mark_push_started
+from .feishu_api import NoRedirect, redact_error_detail
 
 FORMAT = "card-native-table-v2"
 MAX_BODY_BYTES = 18000  # Below Feishu's 20 KB limit, including JSON and signatures.
@@ -164,13 +166,9 @@ def report_parts(text, title, widths=None, *, legacy=False):
     return parts
 
 
-class NoRedirect(HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
-
-
 def send_payload(url, payload):
-    request = Request(url, data=json.dumps(payload, ensure_ascii=False).encode(),
+    body = json.dumps(payload, ensure_ascii=False)
+    request = Request(url, data=body.encode(),
                       headers={"Content-Type": "application/json; charset=utf-8"}, method="POST")
     try:
         with build_opener(NoRedirect()).open(request, timeout=15) as response:
@@ -185,7 +183,7 @@ def send_payload(url, payload):
         if not curl:
             raise ValueError("Python 无法验证飞书 HTTPS 证书。请安装系统 CA 证书或 curl 后重试。") from None
         # Keep the credential URL and report out of process arguments and logs.
-        config = f'url = "{url}"\nheader = "Content-Type: application/json; charset=utf-8"\ndata-binary = {json.dumps(json.dumps(payload, ensure_ascii=False), ensure_ascii=False)}\n'
+        config = f'url = "{url}"\nheader = "Content-Type: application/json; charset=utf-8"\ndata-binary = {json.dumps(body, ensure_ascii=False)}\n'
         result = subprocess.run(
             [curl, "--disable", "--config", "-", "--silent", "--show-error",
              "--connect-timeout", "10", "--max-time", "20", "--proto", "=https",
@@ -216,7 +214,7 @@ def push(folder, config, retry_unknown=False):
         widths = saved.get("table_column_widths", widths)
     legacy = saved.get("format") == "card-markdown-v1" and saved.get("sent_parts", 0) > 0
     send_format = "card-markdown-v1" if legacy else FORMAT
-    report_review.mark_push_started(folder)
+    mark_push_started(folder)
     sheet = feishu_sheets.sync(folder, config)
     text = report_text(folder, sheet["url"] if sheet else None)
     if legacy:
@@ -266,11 +264,7 @@ def send_part(url, payload, path, progress):
             detail = detail if isinstance(detail, str) else "飞书未返回详细错误说明。"
             # Error responses can echo request values; never expose credentials.
             detail = detail.replace(url, "[webhook 已隐藏]")
-            for key in ("sign",):
-                if payload.get(key):
-                    detail = detail.replace(payload[key], "[已隐藏]")
-            detail = re.sub(r"https?://\S+", "[链接已隐藏]", detail)
-            detail = " ".join(detail.split())[:600]
+            detail = redact_error_detail(detail, (payload.get("sign"),), 600)
             message = f"飞书拒绝了消息（code={code}）：{detail}"
             save("failed", last_error=message, error_code=code)
             raise FeishuRejected(message)
@@ -289,7 +283,7 @@ def send_part(url, payload, path, progress):
             raise ValueError("发送结果未知，请先检查群消息，避免重复推送。") from None
         save("failed")
         raise ValueError(message) from None
-    except (TimeoutError, OSError, json.JSONDecodeError, subprocess.TimeoutExpired):
+    except (OSError, json.JSONDecodeError, subprocess.TimeoutExpired):
         save("unknown")
         raise ValueError("发送结果未知，请先检查群消息，避免重复推送。") from None
     except ValueError:

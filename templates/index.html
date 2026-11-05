@@ -4,7 +4,6 @@
     <img src="{{ url_for('static', filename='images/app-icon.svg') }}" alt="" aria-hidden="true">
     <h1 class="title">AI 反馈统计</h1>
 </header>
-<hr>
 <main class="container">
     {% for game in games %}
     <a class="card" href="{{ url_for('pages.game', code=game.code) }}" aria-label="{{ game.name }} 反馈报告">

@@ -37,17 +37,21 @@ class ApiTransportTests(TestCase):
         self.assertIn("Bearer test-access-token", run.call_args.kwargs["input"])
         self.assertIn('request = "PUT"', run.call_args.kwargs["input"])
 
-    def test_http_rejection_exposes_code_and_redacts_token(self):
+    def test_http_rejection_exposes_code_and_redacts_credentials_and_links(self):
         opener = MagicMock()
+        detail = "missing scope for test-access-token test-app-secret https://example.com/private\n\t" + "x" * 600
         opener.open.side_effect = HTTPError("https://open.feishu.cn/example", 403, "Denied", {},
-            BytesIO(b'{"code":99991672,"msg":"missing scope for test-access-token"}'))
+            BytesIO(json.dumps({"code": 99991672, "msg": detail}).encode()))
         with patch("feedback.feishu_api.build_opener", return_value=opener):
             with self.assertRaises(ApiError) as caught:
-                request_json("GET", "/example", token="test-access-token")
+                request_json("POST", "/example", {"app_secret": "test-app-secret"}, "test-access-token")
         self.assertEqual(caught.exception.code, 99991672)
-        self.assertNotIn("test-access-token", str(caught.exception))
+        message = str(caught.exception)
+        for private in ("test-access-token", "test-app-secret", "https://example.com/private", "\n", "\t"):
+            self.assertNotIn(private, message)
+        self.assertEqual(len(message.split("：", 1)[1]), 500)
 
-    def test_missing_curl_or_invalid_json_has_actionable_error(self):
+    def test_missing_curl_has_actionable_certificate_error(self):
         opener = MagicMock()
         opener.open.side_effect = URLError(ssl.SSLCertVerificationError("certificate chain"))
         with patch("feedback.feishu_api.build_opener", return_value=opener), patch(

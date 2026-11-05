@@ -27,6 +27,15 @@ class NoRedirect(HTTPRedirectHandler):
         return None
 
 
+def redact_error_detail(detail, secrets, limit):
+    """Hide echoed credentials and URLs before persisting service errors."""
+    for value in secrets:
+        if value:
+            detail = detail.replace(value, "[已隐藏]")
+    detail = re.sub(r"https?://\S+", "[链接已隐藏]", detail)
+    return " ".join(detail.split())[:limit]
+
+
 def request_json(method, path, payload=None, token=None):
     """Never follow redirects or expose authentication/report data in errors."""
     url = BASE + path
@@ -43,11 +52,9 @@ def request_json(method, path, payload=None, token=None):
                 status = response.status
         except HTTPError as error:
             # API rejections often include useful JSON even with non-2xx HTTP.
-            try:
+            with error:
                 raw = error.read()
                 status = error.code
-            finally:
-                error.close()
         except URLError as error:
             if not isinstance(error.reason, ssl.SSLCertVerificationError):
                 raise
@@ -69,19 +76,14 @@ def request_json(method, path, payload=None, token=None):
             if not status.isdigit():
                 raise ApiError("飞书接口未返回有效的 HTTP 状态，可再次点击推送以继续。")
         result = json.loads(raw)
-    except ApiError:
-        raise
-    except (URLError, OSError, TimeoutError, subprocess.TimeoutExpired, json.JSONDecodeError):
+    except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError):
         raise ApiError("无法获取飞书接口结果，请检查网络后再次点击推送以继续。") from None
     if not isinstance(result, dict) or result.get("code") != 0 or not 200 <= int(status) < 300:
         code = result.get("code") if isinstance(result, dict) else None
         detail = result.get("msg", "响应格式无效") if isinstance(result, dict) else "响应格式无效"
         detail = detail if isinstance(detail, str) else "响应格式无效"
-        for value in (token, (payload or {}).get("app_secret")):
-            if value:
-                detail = detail.replace(value, "[已隐藏]")
-        detail = re.sub(r"https?://\S+", "[链接已隐藏]", detail)
-        raise ApiError(f"飞书表格接口失败（code={code}）：{' '.join(detail.split())[:500]}", code)
+        detail = redact_error_detail(detail, (token, (payload or {}).get("app_secret")), 500)
+        raise ApiError(f"飞书表格接口失败（code={code}）：{detail}", code)
     return result
 
 

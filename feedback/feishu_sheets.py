@@ -70,14 +70,14 @@ def detail_rows(folder):
             if title not in book.sheetnames:
                 raise ValueError("报告 Excel 缺少预期的明细工作表。")
             sheet = book[title]
-            values = list(sheet.iter_rows(min_row=4, values_only=True))
-            actual = list(values[0]) if values else []
+            values = sheet.iter_rows(min_row=4, values_only=True)
+            actual = list(next(values, ()))
             if actual not in allowed_columns or (headers is not None and actual != headers):
                 raise ValueError("报告 Excel 明细字段不匹配，无法推送。")
             if headers is None:
                 headers = actual
                 rows.append(["统计期间", *headers])
-            for record in values[1:]:
+            for record in values:
                 if all(value is None for value in record):
                     continue
                 converted = []
@@ -195,14 +195,15 @@ def sync(folder, config):
                 {"ranges": [f"{sheet_id}!A1:{end_column}1"], "style": {
                     "font": {"bold": True}, "backColor": "#2563EB", "foreColor": "#FFFFFF"}}]})
             checkpoint(prepared=True)
+        date_column = get_column_letter(rows[0].index("反馈时间") + 1)
         offset = saved["written_rows"]
         while offset < len(rows):
             batch = rows[offset:offset + batch_rows]
             # Keep requests small even with long Chinese/Arabic feedback.
             while len(json.dumps(batch, ensure_ascii=False).encode()) > 1500000 and len(batch) > 1:
                 batch = batch[:max(1, len(batch) // 2)]
-            date_column = get_column_letter(rows[0].index("反馈时间") + 1)
-            styles = [{"ranges": [f"{sheet_id}!A{offset + 1}:{end_column}{offset + len(batch)}"],
+            batch_range = f"{sheet_id}!A{offset + 1}:{end_column}{offset + len(batch)}"
+            styles = [{"ranges": [batch_range],
                        "style": {"formatter": "@", "vAlign": 0}}]
             if offset + len(batch) > 1:
                 styles.append({"ranges": [f"{sheet_id}!{date_column}{max(2, offset + 1)}:{date_column}{offset + len(batch)}"],
@@ -210,7 +211,7 @@ def sync(folder, config):
 
             client.call("PUT", root + "/styles_batch_update", {"data": styles})
             result = client.call("PUT", root + "/values", {"valueRange": {
-                "range": f"{sheet_id}!A{offset + 1}:{end_column}{offset + len(batch)}", "values": batch}})
+                "range": batch_range, "values": batch}})
             if result.get("updatedRows") != len(batch) or result.get("updatedColumns") != len(rows[0]):
                 raise ValueError("飞书返回的写入行列数不匹配，请再次推送以继续。")
             offset += len(batch)

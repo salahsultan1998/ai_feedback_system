@@ -43,8 +43,8 @@ class ProcessingTests(BaseTest):
             self.assertEqual(request.call_count,2)
 
     def test_invalid_model_labels_rejected(self):
-        with self.assertRaises(ValueError):
-            validate_result({"translation_zh":"text","label":"invented","theme":""},self.config)
+        with self.assertRaisesRegex(ValueError, "I 类别"):
+            validate_result({**self.model_result("000"), "label": "invented"}, self.config)
 
     def test_global_request_failure_stops_new_batches_and_keeps_checkpoint(self):
         rows, _ = clean_feedback(self.raw, self.config)

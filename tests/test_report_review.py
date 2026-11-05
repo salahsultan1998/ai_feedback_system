@@ -12,6 +12,7 @@ from openpyxl import Workbook
 
 from app import create_app
 from feedback import report_review
+from feedback.review_state import mark_push_started
 from feedback.exports.markdown import render_markdown
 from tests.helpers import BaseTest, fake_request
 
@@ -63,7 +64,8 @@ class ReportReviewTests(TestCase):
     def test_restore_is_explicit_and_original_backup_survives_multiple_saves(self):
         self.save("改善网络连接")
         current = self.save("提高连接稳定性")
-        restored = report_review.save(self.folder, current["version"], None, restore=True)
+        restored = report_review.save(self.folder, current["version"],
+            [{"id": item["id"], "text": item["original_text"]} for item in current["suggestions"]])
         self.assertFalse(restored["modified"])
         self.assertEqual((self.folder / "report.md").read_text(encoding="utf-8"), self.original)
         self.assertEqual((self.folder / "report.original.md").read_text(encoding="utf-8"), self.original)
@@ -106,7 +108,7 @@ class ReportReviewTests(TestCase):
                 with self.assertRaises(ValueError):
                     self.save("不应保存")
         (self.folder / "feishu_push.json").unlink()
-        report_review.mark_push_started(self.folder)
+        mark_push_started(self.folder)
         self.assertFalse(report_review.details(self.folder)["editable"])
         with self.assertRaises(ValueError):
             self.save("仍然不能保存")

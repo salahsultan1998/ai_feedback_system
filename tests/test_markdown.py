@@ -14,7 +14,7 @@ class MarkdownChangeTests(TestCase):
     def test_module_table_combines_count_share_and_omits_change_unit(self):
         snapshot = {"selection": {"periods": {"current": {"start": "2026-10-19", "end": "2026-10-25"},
                     "previous": {"start": "2026-10-12", "end": "2026-10-18"}}},
-            "total": 15, "previous_total": 15, "suggestion_feedback_count": 0,
+            "total": 15, "previous_total": 15,
             "modules": [{"label": "俱乐部", "count": 10, "previous": 5, "share": 2/3, "flagged": False},
                         {"label": "账号问题", "count": 5, "previous": 10, "share": 1/3, "flagged": False}]}
         text = render_markdown(snapshot, {"suggestions": [], "issues": {}}, {"name": "测试游戏"})

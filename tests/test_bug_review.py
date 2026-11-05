@@ -6,6 +6,7 @@ from unittest import TestCase
 import pandas as pd
 
 from feedback import bug_review, report_review
+from feedback.review_state import mark_push_started
 from feedback.exports.markdown import render_markdown
 
 
@@ -47,13 +48,48 @@ class BugReviewTests(TestCase):
         details = bug_review.details(self.folder)
         self.assertTrue(details["available"])
         self.assertTrue(details["editable"])
-        self.assertTrue(details["has_bugs"])
         self.assertFalse(details["modified"])
         self.assertEqual([item["code"] for item in details["bugs"]], ["BUG-001", "BUG-002"])
         self.assertEqual(details["bugs"][0]["sources"][0]["original_text"], "الشاشة سوداء")
         self.assertEqual(details["bugs"][1]["sources"][0]["translation_zh"], "屏幕黑了。")
         self.assertEqual(details["bugs"][0]["feedback_ids"], ["0001", "0002"])
         self.assertIn("2 个疑似问题，涉及 3 条反馈", self.original)
+
+    def test_both_editors_reject_unreadable_or_unsupported_snapshots(self):
+        invalid_snapshots = ["{", "[]", json.dumps({"schema_version": 2, "suggestions": [], "sources": {}}),
+                             json.dumps({"schema_version": 1, "suggestions": {}, "sources": {}}),
+                             json.dumps({"schema_version": 1, "suggestions": [], "sources": []})]
+        for value in invalid_snapshots:
+            (self.folder / "review.json").write_text(value, encoding="utf-8")
+            for editor in (report_review, bug_review):
+                with self.subTest(snapshot=value, editor=editor.__name__):
+                    with self.assertRaisesRegex(ValueError, "快照无法读取"):
+                        editor.details(self.folder)
+                    self.assertEqual((self.folder / "report.md").read_text(encoding="utf-8"), self.original)
+
+    def test_both_editors_require_the_original_report_backup(self):
+        (self.folder / "report.original.md").unlink()
+        for editor in (report_review, bug_review):
+            with self.subTest(editor=editor.__name__):
+                state = editor.details(self.folder)
+                self.assertFalse(state["available"])
+                self.assertFalse(state["editable"])
+                with self.assertRaisesRegex(ValueError, "重新生成"):
+                    editor.save(self.folder, state["version"], [])
+
+    def test_missing_evidence_blocks_both_saves_before_the_report_changes(self):
+        version = report_review.summary(self.folder)["version"]
+        suggestions = [{"id": "s0", "text": "提高连接稳定性"}]
+        bugs = self.payload()
+        bugs[0]["text"] = "玩家反映登录时出现黑屏。"
+        data = json.loads((self.folder / "review.json").read_text(encoding="utf-8"))
+        del data["sources"]["0001"]
+        (self.folder / "review.json").write_text(json.dumps(data), encoding="utf-8")
+        for editor, payload in ((report_review, suggestions), (bug_review, bugs)):
+            with self.subTest(editor=editor.__name__):
+                with self.assertRaises(KeyError):
+                    editor.save(self.folder, version, payload)
+                self.assertEqual((self.folder / "report.md").read_text(encoding="utf-8"), self.original)
 
     def test_suggestion_boundary_uses_next_section_instead_of_bug_heading_wording(self):
         for heading in ("## 疑似 BUG 反馈", "## 疑似 BUG 反馈（待核实）", "## 人工核查的异常反馈"):
@@ -100,7 +136,7 @@ class BugReviewTests(TestCase):
         result = self.save(values)
         self.assertIn(bug_review.EMPTY_TEXT, (self.folder / "report.md").read_text(encoding="utf-8"))
         self.assertTrue(result["editable"])
-        self.assertTrue(result["has_bugs"])
+        self.assertEqual(len(result["bugs"]), 2)
         values = self.payload()
         for item in values:
             item["included"] = True
@@ -178,7 +214,7 @@ class BugReviewTests(TestCase):
                 with self.assertRaises(ValueError):
                     self.save(self.payload())
         (self.folder / "feishu_push.json").unlink()
-        report_review.mark_push_started(self.folder)
+        mark_push_started(self.folder)
         self.assertFalse(bug_review.details(self.folder)["editable"])
 
     def test_old_reports_without_bug_snapshot_remain_unavailable(self):
@@ -210,5 +246,5 @@ class BugReviewTests(TestCase):
             details = bug_review.details(folder)
             self.assertTrue(details["available"])
             self.assertFalse(details["editable"])
-            self.assertFalse(details["has_bugs"])
+            self.assertEqual(details["bugs"], [])
             self.assertTrue(report_review.details(folder)["editable"])

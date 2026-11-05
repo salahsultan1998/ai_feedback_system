@@ -7,7 +7,6 @@ from unittest.mock import patch
 
 from app import create_app
 from feedback import bug_review
-from feedback.exports.markdown import render_markdown
 from feedback.processing import fingerprint
 from feedback.storage import atomic_csv
 from feedback.workflow import run_report

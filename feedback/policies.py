@@ -8,15 +8,11 @@ def is_suggestion_label(label, config):
 
 
 def suggestion_mask(rows, config):
-    return rows["反馈标签"].map(lambda label: is_suggestion_label(label, config))
-
-
-def is_bug_label(label, config):
-    return str(label).strip() in config.get("bug_labels", ["BUG"])
+    return rows["反馈标签"].astype(str).str.strip().isin(config.get("suggestion_labels", ["建议"]))
 
 
 def bug_mask(rows, config):
-    return rows["反馈标签"].map(lambda label: is_bug_label(label, config))
+    return rows["反馈标签"].astype(str).str.strip().isin(config.get("bug_labels", ["BUG"]))
 
 
 def abuse_mask(rows):

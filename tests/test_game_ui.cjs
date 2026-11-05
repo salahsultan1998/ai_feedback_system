@@ -42,11 +42,11 @@ function boot(options = {}) {
                 {feedback_id:"0003",original_text:"活动打不开",translation_zh:"活动打不开。"}]}]};
     function review() {
         return {available:true, editable:server.pushStatus === "ready", locked_reason:server.pushStatus === "ready" ? "" : "此报告已开始推送，建议内容已锁定。",
-            version:server.version, modified:server.suggestions.some(item=>item.text!==item.original_text), updated_at:null};
+            version:server.version, modified:server.suggestions.some(item=>item.text!==item.original_text)};
     }
     function bugReview() {
         const available = options.bugAvailable !== false;
-        return {available, editable:available && server.bugs.length > 0 && server.pushStatus === "ready", has_bugs:server.bugs.length>0,
+        return {available, editable:available && server.bugs.length > 0 && server.pushStatus === "ready",
             locked_reason:!available ? "此报告未保存 BUG 审核来源，请重新生成报告。" : server.bugs.length === 0 ? "本期未发现 BUG 候选。" : server.pushStatus === "ready" ? "" : "此报告已开始推送，BUG 审核已锁定。",
             version:server.version, modified:server.bugs.some(item=>item.text!==item.original_text || !item.included || item.feedback_ids.length!==item.original_feedback_ids.length || item.feedback_ids.some(id=>!item.original_feedback_ids.includes(id)))};
     }
@@ -172,6 +172,24 @@ function boot(options = {}) {
     const fresh = boot();
     assert.equal(fresh.calls.length,0);
     assert.equal(fresh.nodes.get("#content-section").hidden,true);
+
+    const previewApp = boot();
+    const fetchPreview = previewApp.context.fetch;
+    const longInfo = "附加信息".repeat(31);
+    const longText = "玩家原文".repeat(31);
+    previewApp.context.fetch = async (path, options) => path.includes("/preview?") ? {ok:true,json:async()=>({
+        columns:["反馈ID", "附加信息", "用户自己填写的内容"],
+        rows:[["0001", "简短信息", "<script>unsafe()</script>"], ["0002", longInfo, longText]],
+        page:1, page_size:50, total:2
+    })} : fetchPreview(path, options);
+    const previewForm = previewApp.nodes.get("#upload-form");
+    await previewForm.listeners.submit({preventDefault(){},target:previewForm});
+    const previewRows = previewApp.nodes.get("#data-table tbody").children;
+    assert.equal(previewRows[0].children[1].textContent,"简短信息");
+    assert.equal(previewRows[0].children[2].textContent,"<script>unsafe()</script>");
+    assert(!previewRows[0].children[2].innerHTML,"Preview source text stays plain text");
+    assert.equal(previewRows[1].children[1].children[0].children[0].children[0].textContent,longInfo,"Long extra information expands in place");
+    assert.equal(previewRows[1].children[2].textContent,longText,"Other long source columns stay plain text");
 
     const reviewApp = boot({pushStatus:"ready"});
     const n = id => reviewApp.nodes.get("#" + id);
@@ -318,6 +336,22 @@ function boot(options = {}) {
         await old.nodes.get("#report-form").listeners.submit({preventDefault(){}});
         assert.equal(old.nodes.get("#edit-bugs").disabled,true);
         assert(old.nodes.get("#edit-bugs").title.includes(options.bugs ? "未发现" : "重新生成"));
+    }
+
+    for (const button of ["edit-suggestions", "edit-bugs"]) {
+        const locked = boot({pushStatus:"ready"});
+        const node = id => locked.nodes.get("#" + id);
+        await node("upload-form").listeners.submit({preventDefault(){},target:node("upload-form")});
+        await node("report-form").listeners.submit({preventDefault(){}});
+        // Another browser can start pushing after this page has displayed the report.
+        locked.server.pushStatus = "sent";
+        await node(button).listeners.click();
+        assert.equal(node("review-editor").hidden,true,"A newly locked report cannot open an editor");
+        assert.equal(node("report-preview").hidden,false);
+        assert(node("error").textContent.includes("锁定"));
+        assert.equal(node(button).disabled,true);
+        assert.equal(node("file").disabled,false,"Rejected editor requests release the workspace controls");
+        assert.equal(node("start").disabled,false);
     }
     console.log("UI interactions passed: suggestion/BUG editing, original sources, source exclusions, unique counts, restore/cancel, revisions and push locking.");
 })().catch(error => {console.error(error);process.exitCode=1;});

@@ -6,9 +6,8 @@ const csrf = $('meta[name="csrf-token"]').content;
 const uploadHint = $("#file-summary").textContent;
 let run = null, page = 1, totalPages = 1, selection = null, job = null;
 let busy = false, uploading = false, filePending = false, timer = null, selectionVersion = 0;
-let pushUnknown = false;
 let reportComplete = false;
-let reviewState = null, reviewDetail = null, reviewFields = [];
+let reviewState = null, reviewFields = [];
 let bugReviewState = null, reviewMode = "suggestions";
 let editingReview = false, loadingReview = false, savingReview = false, pushing = false;
 let lastPush = {};
@@ -137,12 +136,10 @@ function applyReport(report) {
     bugReviewState = report.bug_review || null;
     $("#report-preview").innerHTML = report.html;
     showPush(report.feishu);
-    reviewControls();
 }
 
 function closeReview() {
     editingReview = false;
-    reviewDetail = null;
     reviewFields = [];
     $("#review-editor").hidden = true;
     $("#review-items").replaceChildren();
@@ -153,7 +150,7 @@ function closeReview() {
 
 function resetReview() {
     editingReview = loadingReview = savingReview = false;
-    reviewState = reviewDetail = null;
+    reviewState = null;
     bugReviewState = null;
     reviewMode = "suggestions";
     reviewFields = [];
@@ -188,8 +185,25 @@ function sourceCard(source, sourceToggle = null) {
     return card;
 }
 
+function sourceList(sources, headingText, renderSource = sourceCard) {
+    const list = document.createElement("div");
+    list.className = "review-sources";
+    const heading = document.createElement("h3");
+    heading.textContent = headingText;
+    list.append(heading);
+    if (sources.length) list.append(renderSource(sources[0]));
+    if (sources.length > 1) {
+        const details = document.createElement("details");
+        const summary = document.createElement("summary");
+        summary.textContent = `展开其余 ${sources.length - 1} 条来源`;
+        details.append(summary);
+        for (const source of sources.slice(1)) details.append(renderSource(source));
+        list.append(details);
+    }
+    return list;
+}
+
 function renderReview(detail) {
-    reviewDetail = detail;
     reviewFields = [];
     const cards = detail.suggestions.map((item, index) => {
         const card = document.createElement("section");
@@ -207,20 +221,7 @@ function renderReview(detail) {
         const ids = document.createElement("p");
         ids.className = "suggestion-ids";
         ids.textContent = `反馈 ID：${item.feedback_ids.join("、")}`;
-        const sources = document.createElement("div");
-        sources.className = "review-sources";
-        const heading = document.createElement("h3");
-        heading.textContent = `参考反馈（共 ${item.sources.length} 条）`;
-        sources.append(heading);
-        if (item.sources.length) sources.append(sourceCard(item.sources[0]));
-        if (item.sources.length > 1) {
-            const details = document.createElement("details");
-            const summary = document.createElement("summary");
-            summary.textContent = `展开其余 ${item.sources.length - 1} 条来源`;
-            details.append(summary);
-            for (const source of item.sources.slice(1)) details.append(sourceCard(source));
-            sources.append(details);
-        }
+        const sources = sourceList(item.sources, `参考反馈（共 ${item.sources.length} 条）`);
         card.append(label, input, ids, sources);
         reviewFields.push({item, input});
         return card;
@@ -239,7 +240,6 @@ function renderReview(detail) {
 }
 
 function renderBugReview(detail) {
-    reviewDetail = detail;
     reviewFields = [];
     const cards = detail.bugs.map((item, index) => {
         const card = document.createElement("section");
@@ -278,11 +278,6 @@ function renderBugReview(detail) {
         removed.className = "bug-removed-note";
         removed.textContent = "此问题将移出报告，原始反馈仍可在下方核对。";
         const field = {item, input, included, sourceChecks: [], card, removed};
-        const sources = document.createElement("div");
-        sources.className = "review-sources";
-        const sourceHeading = document.createElement("h3");
-        sourceHeading.textContent = `参考反馈（共 ${item.sources.length} 条）· 可取消归属错误的反馈`;
-        sources.append(sourceHeading);
         function selectableSource(source) {
             const sourceLabel = document.createElement("label");
             sourceLabel.className = "bug-toggle bug-source-toggle";
@@ -296,15 +291,7 @@ function renderBugReview(detail) {
             field.sourceChecks.push({id: source.feedback_id, input: checkbox});
             return sourceCard(source, sourceLabel);
         }
-        if (item.sources.length) sources.append(selectableSource(item.sources[0]));
-        if (item.sources.length > 1) {
-            const details = document.createElement("details");
-            const summary = document.createElement("summary");
-            summary.textContent = `展开其余 ${item.sources.length - 1} 条来源`;
-            details.append(summary);
-            for (const source of item.sources.slice(1)) details.append(selectableSource(source));
-            sources.append(details);
-        }
+        const sources = sourceList(item.sources, `参考反馈（共 ${item.sources.length} 条）· 可取消归属错误的反馈`, selectableSource);
         card.append(heading, label, input, removed, sources);
         reviewFields.push(field);
         return card;
@@ -322,20 +309,23 @@ function renderBugReview(detail) {
     (reviewFields.find(field => field.included.checked)?.input || reviewFields[0]?.included)?.focus();
 }
 
-$("#edit-suggestions").addEventListener("click", async () => {
-    if ($("#edit-suggestions").disabled) return;
+async function openReview(mode) {
+    const bugs = mode === "bugs";
+    if ($(bugs ? "#edit-bugs" : "#edit-suggestions").disabled) return;
     const target = jobUrl();
-    reviewMode = "suggestions";
+    reviewMode = mode;
     loadingReview = true;
     controls();
     reviewControls();
     error("");
     try {
-        const detail = await api(`${target}/review`);
+        const detail = await api(`${target}/${bugs ? "bugs" : "review"}`);
         if (target !== jobUrl()) return;
-        reviewState = detail;
-        if (!detail.editable) throw new Error(detail.locked_reason || "此报告目前无法编辑。");
-        renderReview(detail);
+        if (bugs) bugReviewState = detail;
+        else reviewState = detail;
+        if (!detail.editable) throw new Error(detail.locked_reason || (bugs ? "此报告目前无法审核 BUG。" : "此报告目前无法编辑。"));
+        if (bugs) renderBugReview(detail);
+        else renderReview(detail);
     } catch (failure) {
         if (target === jobUrl()) error(failure.message);
     } finally {
@@ -345,32 +335,10 @@ $("#edit-suggestions").addEventListener("click", async () => {
             reviewControls();
         }
     }
-});
+}
 
-$("#edit-bugs").addEventListener("click", async () => {
-    if ($("#edit-bugs").disabled) return;
-    const target = jobUrl();
-    reviewMode = "bugs";
-    loadingReview = true;
-    controls();
-    reviewControls();
-    error("");
-    try {
-        const detail = await api(`${target}/bugs`);
-        if (target !== jobUrl()) return;
-        bugReviewState = detail;
-        if (!detail.editable) throw new Error(detail.locked_reason || "此报告目前无法审核 BUG。");
-        renderBugReview(detail);
-    } catch (failure) {
-        if (target === jobUrl()) error(failure.message);
-    } finally {
-        if (target === jobUrl()) {
-            loadingReview = false;
-            controls();
-            reviewControls();
-        }
-    }
-});
+$("#edit-suggestions").addEventListener("click", () => openReview("suggestions"));
+$("#edit-bugs").addEventListener("click", () => openReview("bugs"));
 
 $("#cancel-review").addEventListener("click", () => {
     if (savingReview) return;
@@ -403,8 +371,9 @@ $("#review-editor").addEventListener("submit", async event => {
     error("");
     try {
         const bugs = reviewMode === "bugs";
-        const body = bugs ? {version: reviewDetail.version, bugs: reviewFields.map(bugDraft)} :
-            {version: reviewDetail.version, suggestions: reviewFields.map(({item, input}) => ({id: item.id, text: input.value}))};
+        const version = (bugs ? bugReviewState : reviewState).version;
+        const body = bugs ? {version, bugs: reviewFields.map(bugDraft)} :
+            {version, suggestions: reviewFields.map(({item, input}) => ({id: item.id, text: input.value}))};
         const report = await post(`${target}/${bugs ? "bugs" : "review"}`, body);
         if (target !== jobUrl()) return;
         closeReview();
@@ -430,8 +399,7 @@ $("#download-md").addEventListener("click", event => {
 function showPush(data = {}) {
     lastPush = data;
     const button = $("#push-feishu");
-    pushUnknown = data.status === "unknown";
-    button.disabled = !data.available || data.status === "sent";
+    const pushUnknown = data.status === "unknown";
     button.textContent = data.status === "sent" ? "已推送到飞书" : pushUnknown ? "确认本段未收到，继续推送" : data.available ? (data.sent_parts ? "继续推送报告" : "一键推送到飞书") : "未配置飞书推送";
     const progress = data.total_parts ? `已发送 ${data.sent_parts || 0}/${data.total_parts} 段。` : "";
     const message = data.status === "sent" ? `推送成功 · ${data.total_parts || 1} 段 · ${new Date(data.sent_at).toLocaleString()}` : data.status === "unknown" ? `${progress}下一段发送结果未知，请先检查群消息，避免重复推送。` : progress + (data.last_error || data.reason || "");
@@ -447,13 +415,12 @@ $("#push-feishu").addEventListener("click", async () => {
     pushing = true;
     controls();
     reviewControls();
-    button.disabled = true;
     button.textContent = "推送中…";
     $("#push-status").textContent = "正在准备明细并推送报告，请稍候。";
     $("#push-status").hidden = false;
     error("");
     try {
-        const data = await post(`${target}/push/feishu`, {retry_unknown: pushUnknown, report_version: reviewState?.version || bugReviewState?.version});
+        const data = await post(`${target}/push/feishu`, {retry_unknown: lastPush.status === "unknown", report_version: reviewState?.version || bugReviewState?.version});
         if (target !== jobUrl()) return;
         showPush(data);
         if (reviewState) reviewState = {...reviewState, editable: false, locked_reason: "此报告已开始推送，建议内容已锁定。"};
@@ -507,21 +474,17 @@ async function showPage(number) {
         for (const [index, value] of values.entries()) {
             const cell = document.createElement("td");
             cell.dir = "auto";
-            if (index === extraInfoColumn) {
-                cell.classList.add("extra-info-column");
-                if (value.length > 120) {
-                    const details = document.createElement("details");
-                    const summary = document.createElement("summary");
-                    const content = document.createElement("span");
-                    content.className = "extra-info-text";
-                    content.textContent = value;
-                    summary.title = "点击展开或收起完整附加信息";
-                    summary.append(content);
-                    details.append(summary);
-                    cell.append(details);
-                } else {
-                    cell.textContent = value;
-                }
+            if (index === extraInfoColumn) cell.classList.add("extra-info-column");
+            if (index === extraInfoColumn && value.length > 120) {
+                const details = document.createElement("details");
+                const summary = document.createElement("summary");
+                const content = document.createElement("span");
+                content.className = "extra-info-text";
+                content.textContent = value;
+                summary.title = "点击展开或收起完整附加信息";
+                summary.append(content);
+                details.append(summary);
+                cell.append(details);
             } else {
                 cell.textContent = value;
             }

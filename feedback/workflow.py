@@ -18,7 +18,7 @@ def prepare_selection(folder, config, start, end, confirmed=False):
     selected, info = select_feedback(raw, cleaned, start, end, config, confirmed)
     dates = parse_dates(excluded["反馈时间"])
     mask = period_mask(dates, info["periods"]["current"]) | period_mask(dates, info["periods"]["previous"])
-    info.update(excluded_in_period=int(mask.sum()), invalid_date_count=int(dates.isna().sum()))
+    info["excluded_in_period"] = int(mask.sum())
     return selected, info
 
 

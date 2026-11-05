@@ -1,6 +1,5 @@
 import copy
 import json
-from pathlib import Path
 from unittest.mock import patch
 
 import pandas as pd
@@ -10,10 +9,6 @@ from tests.helpers import BaseTest
 
 
 class BugAnalysisTests(BaseTest):
-    def setUp(self):
-        super().setUp()
-        self.config["bugs_prompt"] = Path("config/baloot/prompts/bugs.md").read_text(encoding="utf-8")
-
     def snapshot(self, entries):
         rows = pd.DataFrame([{"反馈ID": f"00{index:04d}", "用户ID": "private-user", "最终标签": "其他",
             "具体主题": "个人信息页面", "三级主题": "", "反馈标签": "BUG", "排除原因": "",

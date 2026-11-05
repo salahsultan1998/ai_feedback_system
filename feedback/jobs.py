@@ -46,7 +46,6 @@ class Jobs:
             path = self.path(game, run, job)
             atomic_json(path, data)
             folder = self.storage.folder(game, run)
-            atomic_json(folder / "progress.json", {"job_id": job})
             self.active = job
             self.cancel.clear()
 

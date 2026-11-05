@@ -21,13 +21,19 @@ def evidence(item, allowed, config, max_chars, max_ids=None, id_field="feedback_
 
 
 def batches(items, metadata, limit):
+    # Default JSON separators add two characters between adjacent list items.
+    overhead = len(json.dumps({**metadata, "items": []}, ensure_ascii=False, sort_keys=True))
+    chars = overhead
     batch = []
     for item in items:
-        if len(json.dumps({**metadata, "items": [item]}, ensure_ascii=False, sort_keys=True)) > limit:
+        length = len(json.dumps(item, ensure_ascii=False, sort_keys=True))
+        if overhead + length > limit:
             raise ValueError("单条分析数据超过长度限制。")
-        if batch and len(json.dumps({**metadata, "items": batch + [item]}, ensure_ascii=False, sort_keys=True)) > limit:
+        if batch and chars + 2 + length > limit:
             yield batch
             batch = []
+            chars = overhead
+        chars += length + (2 if batch else 0)
         batch.append(item)
     if batch:
         yield batch

@@ -1,8 +1,11 @@
 """Review suspected BUG descriptions and their immutable feedback references."""
-from datetime import datetime, timezone
 import html
 from pathlib import Path
 import re
+
+from .report_language import validate_report_language
+from .review_state import (MAX_TEXT_CHARS, ReviewConflict, load_snapshot, lock_reason,
+                           plain_text, report_version)
 
 
 HEADING = "## 疑似 BUG 反馈"
@@ -19,7 +22,7 @@ def _categories(value):
 def snapshot_entries(bugs):
     return [{"id": f"b{index}", "code": f"BUG-{index + 1:03d}", "label": item["label"],
              "categories": _categories(item.get("categories")),
-             "text": item["text"].replace("\r", " ").replace("\n", " "),
+             "text": plain_text(item["text"]),
              "feedback_ids": list(dict.fromkeys(item["feedback_ids"]))}
             for index, item in enumerate(bugs)]
 
@@ -84,28 +87,25 @@ def _active(section, originals):
 
 
 def _read(folder, text=None, include_sources=True):
-    from . import report_review
-
     folder = Path(folder)
     text = (folder / "report.md").read_text(encoding="utf-8") if text is None else text
-    data = report_review._load(folder)
+    data = load_snapshot(folder)
     parts = _parts(text)
     available = data is not None and "bugs" in data and parts is not None
     result = {"available": available, "editable": False, "locked_reason": UNAVAILABLE_REASON,
-              "version": report_review._version(text), "modified": False, "has_bugs": False, "updated_at": None}
+              "version": report_version(text), "modified": False}
     if not available:
         if include_sources:
             result["bugs"] = []
         return result
     originals = data["bugs"]
     active = _active(parts[1], originals)
-    reason = report_review._lock_reason(folder) or ("本期没有可核查的疑似 BUG。" if not originals else "")
-    result.update(editable=not reason, locked_reason=reason, has_bugs=bool(originals),
+    reason = lock_reason(folder) or ("本期没有可核查的疑似 BUG。" if not originals else "")
+    result.update(editable=not reason, locked_reason=reason,
                   modified=list(active) != [item["code"] for item in originals] or any(
                       active[item["code"]]["text"] != item["text"] or
                       active[item["code"]]["feedback_ids"] != item["feedback_ids"]
-                      for item in originals if item["code"] in active),
-                  updated_at=datetime.fromtimestamp((folder / "report.md").stat().st_mtime, timezone.utc).isoformat())
+                      for item in originals if item["code"] in active))
     if include_sources:
         result["bugs"] = [{"id": item["id"], "code": item["code"], "label": item["label"],
                            "categories": list(item["categories"]), "text": active.get(item["code"], item)["text"],
@@ -126,17 +126,14 @@ def summary(folder, text=None):
 
 
 def save(folder, version, bugs):
-    from . import report_review
-    from .report_language import validate_report_language
-
     folder = Path(folder)
     current = (folder / "report.md").read_text(encoding="utf-8")
     state = _read(folder, text=current)
     if not state["editable"]:
         raise ValueError(state["locked_reason"])
     if not isinstance(version, str) or version != state["version"]:
-        raise report_review.ReviewConflict("报告已更新，请重新打开 BUG 核查界面后再保存。")
-    originals = report_review._load(folder)["bugs"]
+        raise ReviewConflict("报告已更新，请重新打开 BUG 核查界面后再保存。")
+    originals = load_snapshot(folder)["bugs"]
     if not isinstance(bugs, list) or len(bugs) != len(originals):
         raise ValueError("只能核查现有疑似 BUG，不能新增、删除或更换问题编号。")
     included = []
@@ -145,15 +142,15 @@ def save(folder, version, bugs):
                 item["id"] != original["id"] or type(item["included"]) is not bool):
             raise ValueError("BUG 编号或核查格式无效，请重新打开核查界面。")
         value, ids = item["text"], item["feedback_ids"]
-        if not isinstance(value, str) or item["included"] and (not value.strip() or len(value) > report_review.MAX_TEXT_CHARS):
-            raise ValueError(f"每条 BUG 描述须填写 1–{report_review.MAX_TEXT_CHARS} 个字符。")
+        if not isinstance(value, str) or item["included"] and (not value.strip() or len(value) > MAX_TEXT_CHARS):
+            raise ValueError(f"每条 BUG 描述须填写 1–{MAX_TEXT_CHARS} 个字符。")
         if item["included"] and any(ord(char) < 32 and char not in "\r\n\t" for char in value):
             raise ValueError("BUG 描述含不可显示的控制字符，请删除后再保存。")
         if (not isinstance(ids, list) or any(not isinstance(fid, str) or fid not in original["feedback_ids"] for fid in ids) or
                 len(ids) != len(set(ids)) or item["included"] and not ids):
             raise ValueError("保留的 BUG 至少需要一条原始引用，且不能添加、重复或更换来源反馈。")
         if item["included"]:
-            included.append({**original, "text": report_review._plain(value.strip()),
+            included.append({**original, "text": plain_text(value.strip()),
                              "feedback_ids": [fid for fid in original["feedback_ids"] if fid in ids]})
     prefix, section, suffix = _parts(current)
     updated_section = render_section(included)

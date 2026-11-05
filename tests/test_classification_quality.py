@@ -44,10 +44,9 @@ class ClassificationQualityTests(BaseTest):
                 validate_result(value, self.config)
 
     def test_flags_and_exclusion_decisions_are_strict(self):
-        for field in ("is_valid",):
-            for bad in ("false", "true", 0, 1, None):
-                with self.subTest(field=field, bad=bad), self.assertRaises(ValueError):
-                    validate_result(answer(**{field: bad}), self.config)
+        for bad in ("false", "true", 0, 1, None):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                validate_result(answer(is_valid=bad), self.config)
         invalid = answer(is_valid=False, label="", exclusion_reason="缺少明确反馈对象或诉求")
         self.assertFalse(validate_result(invalid, self.config)["is_valid"])
         for changes in ({"label": "其他"}, {"exclusion_reason": ""},
@@ -78,9 +77,8 @@ class ClassificationQualityTests(BaseTest):
         self.assertEqual(result["suggestion_feedback_count"], 1)
         self.assertEqual(sum(m["count"] for m in result["modules"]), 1)
         self.assertEqual(sum(m["share"] for m in result["modules"]), 1)
-        self.assertEqual(result["modules"][0]["suggestion_count"], 1)
-        self.assertEqual(result["selection"]["candidate_current_count"], 2)
-        self.assertEqual(result["selection"]["semantic_excluded_current"], 1)
+        self.assertEqual(list(result["current"]["反馈ID"]), ["004"])
+        self.assertEqual(list(result["excluded"]["反馈ID"]), ["005"])
 
     def test_suggestion_extraction_uses_only_source_tagged_records_across_modules(self):
         rows, info = self.processed()
@@ -141,8 +139,7 @@ class ClassificationQualityTests(BaseTest):
         self.assertNotIn("004", {r[3] for r in detail_rows(folder)[1:]})
         markdown = (folder / "report.md").read_text()
         self.assertIn("本期有效反馈：1 条", markdown)
-        self.assertEqual(result["selection"]["semantic_excluded_current"], 1)
-        self.assertEqual(result["selection"]["semantic_excluded_previous"], 0)
+        self.assertEqual(result["selection"]["semantic_excluded_in_period"], 1)
 
     def test_zero_current_after_filtering_and_overlapping_periods_are_supported(self):
         rows, info = self.processed()
@@ -159,8 +156,9 @@ class ClassificationQualityTests(BaseTest):
         rows.loc[rows["反馈ID"].eq("002"), ["是否有效", "最终标签", "排除原因"]] = ["否", "", "内容无法理解"]
         result = build_statistics(rows, info, self.config)
         self.assertEqual(result["selection"]["semantic_excluded_in_period"], 1)
-        self.assertEqual(result["selection"]["semantic_excluded_current"], 1)
-        self.assertEqual(result["selection"]["semantic_excluded_previous"], 1)
+        self.assertNotIn("002", set(result["current"]["反馈ID"]))
+        self.assertNotIn("002", set(result["previous"]["反馈ID"]))
+        self.assertEqual(list(result["excluded"]["反馈ID"]), ["002"])
 
     def test_old_cache_cannot_guess_missing_suggestion_flags(self):
         rows, _ = self.selected()
@@ -222,8 +220,6 @@ class ClassificationQualityTests(BaseTest):
             self.assertEqual(model.call_count, count)
         self.assertEqual((result["total"], result["previous_total"], result["suggestion_feedback_count"]), (1, 0, 1))
         self.assertEqual(result["selection"]["abusive_excluded_in_period"], 2)
-        self.assertEqual(result["selection"]["abusive_excluded_current"], 1)
-        self.assertEqual(result["selection"]["abusive_excluded_previous"], 1)
         self.assertEqual(result["selection"]["semantic_excluded_in_period"], 1)
         self.assertEqual(set(analysis_ids), {"005"})
         stored = read_csv(self.root / "processed.csv").set_index("反馈ID")
@@ -270,8 +266,8 @@ class ClassificationQualityTests(BaseTest):
         rows.loc[rows["反馈ID"].eq("002"), "最终标签"] = "辱骂"
         result = build_statistics(rows, info, self.config)
         self.assertEqual(result["selection"]["abusive_excluded_in_period"], 1)
-        self.assertEqual(result["selection"]["abusive_excluded_current"], 1)
-        self.assertEqual(result["selection"]["abusive_excluded_previous"], 1)
+        self.assertNotIn("002", set(result["current"]["反馈ID"]))
+        self.assertNotIn("002", set(result["previous"]["反馈ID"]))
         self.assertTrue(result["excluded"].empty)
         self.assertNotIn("辱骂", {module["label"] for module in result["modules"]})
 

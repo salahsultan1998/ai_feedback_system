@@ -91,6 +91,26 @@ class SheetTests(BaseTest):
         self.assertIsInstance(rows[1][6], (int, float))
         self.assertEqual(rows[1][8], "'=1+1")
 
+    def test_detail_rows_keeps_empty_period_headers_and_skips_blank_records(self):
+        from openpyxl import load_workbook
+        expected = [row for row in feishu_sheets.detail_rows(self.folder) if row[0] != "上周同期"]
+        book = load_workbook(self.folder / "feedback_details.xlsx")
+        book["本期反馈明细"].insert_rows(5)
+        previous = book["上周同期反馈明细"]
+        previous.delete_rows(5, previous.max_row)
+        book.save(self.folder / "feedback_details.xlsx")
+        book.close()
+        self.assertEqual(feishu_sheets.detail_rows(self.folder), expected)
+
+    def test_invalid_detail_headers_are_rejected(self):
+        from openpyxl import load_workbook
+        book = load_workbook(self.folder / "feedback_details.xlsx")
+        book["上周同期反馈明细"]["A4"] = "未知字段"
+        book.save(self.folder / "feedback_details.xlsx")
+        book.close()
+        with self.assertRaisesRegex(ValueError, "字段不匹配"):
+            feishu_sheets.detail_rows(self.folder)
+
     def test_sync_and_repeat_preserve_existing_tabs(self):
         result = feishu_sheets.sync(self.folder, self.config)
         self.assertEqual(result["status"], "complete")
@@ -335,14 +355,21 @@ class SheetTests(BaseTest):
 
 
 class AuthenticationTests(BaseTest):
-    def test_token_cache_uses_expiry_and_never_saves_secret(self):
+    def test_token_cache_reuses_unexpired_token_and_refreshes_expired_token(self):
         with patch.dict(os.environ, {"TEST_ID": "app", "TEST_SECRET": "secret"}), patch(
-                "feedback.feishu_api.request_json", return_value={"code": 0, "tenant_access_token": "token", "expire": 7200}) as request:
+                "feedback.feishu_api.request_json", side_effect=[
+                    {"code": 0, "tenant_access_token": "token", "expire": 7200},
+                    {"code": 0, "tenant_access_token": "new-token", "expire": 7200}]) as request, patch(
+                "feedback.feishu_api.time.monotonic", return_value=100) as clock:
             client = Client({"app_id_env": "TEST_ID", "app_secret_env": "TEST_SECRET"})
             _tokens.pop(client.cache_key, None)
+            self.addCleanup(_tokens.pop, client.cache_key, None)
             self.assertEqual(client.token(), "token")
             self.assertEqual(client.token(), "token")
             request.assert_called_once()
+            clock.return_value = 7301
+            self.assertEqual(client.token(), "new-token")
+            self.assertEqual(request.call_count, 2)
             self.assertNotIn("secret", client.cache_key)
 
     def test_invalid_or_non_feishu_destination_is_rejected(self):

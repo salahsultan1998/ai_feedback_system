@@ -10,7 +10,6 @@
     </span>
     <div><h1 class="title">{{ game.name }}</h1><p class="muted heading-note">玩家反馈报告</p></div>
 </header>
-<hr>
 {% if not game.enabled %}
 <section class="panel empty-state"><h2>此游戏即将开放</h2><p class="muted">分类和游戏术语配置完成后，即可在这里生成反馈报告。</p><a class="button secondary" href="{{ url_for('pages.home') }}">返回首页</a></section>
 {% else %}
@@ -30,6 +29,7 @@
         </form>
         <form id="report-form" hidden>
             <div class="date-fields">
+                <p class="date-label">报告期间<span class="muted small">日期含首尾当天 · 对比上周同期</span></p>
                 <label><input type="date" id="start" name="start" required aria-label="开始日期"></label>
                 <span class="date-arrow" aria-hidden="true">→</span>
                 <label><input type="date" id="end" name="end" required aria-label="结束日期"></label>
@@ -41,7 +41,6 @@
                 <div id="coverage-warning" class="notice warning" hidden></div>
                 <label id="confirm-label" class="check small" hidden><input type="checkbox" id="confirm-coverage">我已确认完整导出两个期间；超出文件记录边界的日期确实没有反馈。</label>
             </div>
-            <p class="muted cost-note">日期含首尾当天 · 生成会调用 AI，可能产生 API 费用</p>
         </form>
         <div id="job-status" hidden>
             <div class="status-line"><div class="status-copy"><span id="job-spinner" class="loading-spinner" aria-hidden="true" hidden></span><span id="job-message" class="muted small" role="status" aria-live="polite"></span></div><button id="stop-button" type="button" class="secondary compact" hidden>停止处理</button></div>

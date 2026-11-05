@@ -56,7 +56,7 @@ def validate_result(result, config, original_label=""):
             "is_valid": result["is_valid"], "exclusion_reason": reason}
 
 
-def cached_result(row, config):
+def validate_cached_result(row, config):
     value = {field: row.get(column) for field, column in RESULT_COLUMNS.items()}
     for field in ("is_suggestion", "is_valid"):
         if value[field] not in {"是", "否"}:
@@ -65,7 +65,6 @@ def cached_result(row, config):
     checked = validate_result(value, config, row.get("反馈标签", ""))
     if value["is_suggestion"] != checked["is_suggestion"]:
         raise ValueError("旧建议判断与原标签不一致，需要按新规则处理。")
-    return checked
 
 
 def fingerprint(row, config):
@@ -98,11 +97,12 @@ def make_batches(items, size, max_chars):
     """Bound item count and serialized input length without truncating a record."""
     batch, chars = [], len('{"feedbacks": []}')
     for item in items:
-        length = len(json.dumps(item, ensure_ascii=False)) + (2 if batch else 0)
+        item_chars = len(json.dumps(item, ensure_ascii=False))
+        length = item_chars + (2 if batch else 0)
         if batch and (len(batch) >= size or chars + length > max_chars):
             yield batch
             batch, chars = [], len('{"feedbacks": []}')
-            length = len(json.dumps(item, ensure_ascii=False))
+            length = item_chars
         batch.append(item)
         chars += length
     if batch:
@@ -122,12 +122,12 @@ def process_feedback(rows, config, path, progress, should_stop=None):
     for index, row in result.iterrows():
         old = saved.get(str(row["反馈ID"]), {})
         key = fingerprint(row, config)
-        valid = False
-        try:
-            cached_result(old, config)
-            valid = old.get("处理指纹") == key and not old.get("错误")
-        except ValueError:
-            pass
+        valid = old.get("处理指纹") == key and not old.get("错误")
+        if valid:
+            try:
+                validate_cached_result(old, config)
+            except ValueError:
+                valid = False
         if valid:
             for column in OUTPUT:
                 result.at[index, column] = old[column]
@@ -169,8 +169,8 @@ def process_feedback(rows, config, path, progress, should_stop=None):
             progress(stage="processing", message="正在批量翻译与分类", done=done, total=len(result))
 
     def process_batch(batch):
-        payload = {"feedbacks": list(batch)}
-        accepted, errors = {}, {}
+        payload = {"feedbacks": batch}
+        accepted, errors = set(), {}
 
         def validate(value):
             remaining = [item["feedback_id"] for item in payload["feedbacks"]]
