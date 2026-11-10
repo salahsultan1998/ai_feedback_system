@@ -1,13 +1,12 @@
 from contextlib import contextmanager
 from io import BytesIO
-import json
 import os
 import threading
 from unittest.mock import patch
 
 from app import create_app
 from feedback.storage import atomic_json
-from tests.helpers import BaseTest
+from tests.helpers import BaseTest, workspace_client
 
 
 class JobRecoveryTests(BaseTest):
@@ -16,7 +15,7 @@ class JobRecoveryTests(BaseTest):
     def setUp(self):
         super().setUp()
         self.app = create_app({"TESTING": True, "STORAGE_ROOT": self.root / "web"})
-        self.client = self.app.test_client()
+        self.client = workspace_client(self.app)
         self.client.get("/")
         with self.client.session_transaction() as session:
             self.headers = {"X-CSRF-Token": session["csrf"]}
@@ -68,107 +67,115 @@ class JobRecoveryTests(BaseTest):
         self.assertEqual(response.status_code, 202, response.get_json())
         return response.get_json()
 
-    def test_navigation_and_reupload_conflict_identify_the_same_active_worker(self):
-        base, metadata = self.upload()
-        with self.blocked_report() as (started, release, threads):
-            job = self.start(base)
-            self.assertTrue(started.wait(3))
-            self.client.get("/")
-            self.client.get("/games/baloot")
-            other_base, _ = self.upload()
-            conflict = self.client.post(other_base + "/reports", json=self.options, headers=self.headers)
-            self.assertEqual(conflict.status_code, 409)
-            self.assertEqual(conflict.get_json()["active_job"]["id"], job["id"])
-            active = self.client.get("/api/jobs/active")
-            self.assertEqual(active.status_code, 200)
-            current = active.get_json()["job"]
-            self.assertEqual(current, conflict.get_json()["active_job"])
-            self.assertEqual((current["game"], current["run"]), ("baloot", metadata["run"]))
-            self.assertEqual(current["options"], self.options)
-            self.assertEqual((current["done"], current["total"], current["status"]), (1, 4, "running"))
-            self.assertEqual(len(threads), 1)
-            self.assertNotIn("test-only-recovery-key", json.dumps(current))
-            self.assertNotIn("classification_prompt", current)
-            snapshot = self.app.extensions["jobs"].current()
-            snapshot["message"] = "client-local change"
-            self.assertEqual(self.app.extensions["jobs"].current()["message"], "测试处理进度")
+    def close(self):
+        return self.client.post("/api/workspaces/close", headers=self.headers)
 
-    def test_upload_metadata_restores_original_upload_without_a_latest_job_pointer(self):
-        base, metadata = self.upload()
-        response = self.client.get(base)
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_json(), metadata)
-        self.assertNotIn("latest_job", response.get_json())
-        self.assertNotIn("OPENROUTER_API_KEY", response.get_json())
-        self.assertEqual(self.client.get("/api/games/baloot/uploads/not-an-id").status_code, 400)
-        self.assertEqual(self.client.get("/api/games/baloot/uploads/" + "f" * 32).status_code, 400)
+    def test_close_removes_only_its_page_and_revokes_access(self):
+        base, meta = self.upload()
+        folder = self.app.extensions["storage"].folder("baloot", meta["run"])
+        other = workspace_client(self.app)
+        with other.session_transaction() as session:
+            headers = {"X-CSRF-Token": session["csrf"]}
+        response = other.post("/api/games/baloot/uploads", headers=headers,
+            data={"file": (BytesIO(self.raw.to_csv(index=False).encode()), "other.csv")})
+        other_folder = self.app.extensions["storage"].folder("baloot", response.get_json()["run"])
+        self.assertEqual(other.get(base).status_code, 404)
+        self.assertEqual(self.close().status_code, 200)
+        self.assertFalse(folder.exists())
+        self.assertTrue(other_folder.exists())
+        self.assertEqual(self.client.get(base).status_code, 410)
 
-    def test_completed_away_job_remains_readable_after_the_worker_releases(self):
-        self.assertEqual(self.client.get("/api/jobs/active").get_json(), {"job": None})
+    def test_tabs_and_other_sessions_cannot_access_each_other(self):
+        import re
         base, _ = self.upload()
+        page = self.client.get("/games/baloot").get_data(as_text=True)
+        token = re.search(r'data-workspace="([^"]+)"', page).group(1)
+        self.assertEqual(self.client.get(base, headers={"X-Workspace": token}).status_code, 404)
+        outsider = workspace_client(self.app)
+        stolen = self.client.environ_base["HTTP_X_WORKSPACE"]
+        with outsider.session_transaction() as session:
+            headers = {"X-CSRF-Token": session["csrf"], "X-Workspace": stolen}
+        self.assertEqual(outsider.post("/api/workspaces/close", headers=headers).status_code, 410)
+        for suffix in ("", "/preview", "/jobs/" + "a" * 32, "/jobs/" + "a" * 32 + "/download/excel?workspace=" + stolen):
+            self.assertEqual(outsider.get(base + suffix, headers={"X-Workspace": stolen}).status_code, 410)
+        self.assertEqual(self.client.get(base).status_code, 200)
+
+    def test_close_cancels_worker_but_keeps_files_and_slot_until_finished(self):
+        base, meta = self.upload()
+        folder = self.app.extensions["storage"].folder("baloot", meta["run"])
         with self.blocked_report() as (started, release, threads):
-            job = self.start(base)
+            self.start(base)
             self.assertTrue(started.wait(3))
+            self.assertEqual(self.close().status_code, 200)
+            self.assertTrue(self.app.extensions["jobs"].cancel.is_set())
+            self.assertTrue(folder.exists())
+            other = workspace_client(self.app)
+            self.assertEqual(other.get("/api/jobs/active").get_json(), {"busy": True})
             release.set()
             threads[0].join(timeout=3)
-            self.assertFalse(threads[0].is_alive())
-            self.assertIsNone(self.app.extensions["jobs"].active)
-            self.assertEqual(self.client.get("/api/jobs/active").get_json(), {"job": None})
-            saved = self.client.get(base + "/jobs/" + job["id"]).get_json()
-            self.assertEqual(saved["status"], "complete")
-            self.assertEqual(saved["result"], {"total": 2, "previous_total": 2})
-            self.assertEqual(saved["run"], job["run"])
+            self.app.extensions["workspaces"].sweep()
+            self.assertFalse(folder.exists())
+            self.assertEqual(other.get("/api/jobs/active").get_json(), {"busy": False})
 
-    def test_stop_keeps_the_worker_reserved_until_inflight_work_finishes(self):
+    def test_busy_report_never_discloses_another_page_reference(self):
         base, _ = self.upload()
+        with self.blocked_report() as (started, release, threads):
+            self.start(base)
+            self.assertTrue(started.wait(3))
+            other_base, _ = self.upload()
+            response = self.client.post(other_base + "/reports", json=self.options, headers=self.headers)
+            self.assertEqual(response.status_code, 409)
+            self.assertEqual(set(response.get_json()), {"error", "busy"})
+            self.assertEqual(self.client.get("/api/jobs/active").get_json(), {"busy": True})
+
+    def test_stop_preserves_work_until_page_closes(self):
+        base, meta = self.upload()
         with self.blocked_report() as (started, release, threads):
             job = self.start(base)
             self.assertTrue(started.wait(3))
             stopped = self.client.post(base + "/jobs/" + job["id"] + "/stop", headers=self.headers)
             self.assertEqual(stopped.get_json()["status"], "stopping")
-            active = self.client.get("/api/jobs/active").get_json()["job"]
-            self.assertEqual((active["id"], active["status"]), (job["id"], "stopping"))
-            blocked = self.client.post(base + "/reports", json=self.options, headers=self.headers)
-            self.assertEqual(blocked.status_code, 409)
-            self.assertEqual(blocked.get_json()["active_job"]["status"], "stopping")
             release.set()
             threads[0].join(timeout=3)
-            self.assertFalse(threads[0].is_alive())
-            self.assertEqual(self.client.get("/api/jobs/active").get_json(), {"job": None})
-            saved = self.client.get(base + "/jobs/" + job["id"]).get_json()
-            self.assertEqual(saved["status"], "stopped")
-            self.assertEqual(saved["done"], 1)
+            self.assertEqual(self.client.get(base + "/jobs/" + job["id"]).get_json()["status"], "stopped")
+        self.close()
+        self.assertFalse(self.app.extensions["storage"].folder("baloot", meta["run"]).exists())
 
-    def test_failed_worker_releases_its_reservation_and_keeps_progress(self):
-        base, _ = self.upload()
-        with self.blocked_report(ValueError("synthetic failure")) as (started, release, threads):
-            job = self.start(base)
-            self.assertTrue(started.wait(3))
-            with self.assertLogs(self.app.logger.name, level="WARNING"):
-                release.set()
-                threads[0].join(timeout=3)
-            self.assertFalse(threads[0].is_alive())
-            self.assertEqual(self.client.get("/api/jobs/active").get_json(), {"job": None})
-            saved = self.client.get(base + "/jobs/" + job["id"]).get_json()
-            self.assertEqual((saved["status"], saved["done"]), ("failed", 1))
+    def test_expiry_removes_abandoned_files_but_heartbeat_keeps_them(self):
+        import time
+        base, meta = self.upload()
+        manager = self.app.extensions["workspaces"]
+        token = self.client.environ_base["HTTP_X_WORKSPACE"]
+        manager.pages[token]["touched"] = time.monotonic() - manager.idle_seconds - 1
+        self.client.post("/api/workspaces/ping", headers=self.headers)
+        manager.sweep()
+        self.assertEqual(self.client.get(base).status_code, 200)
+        manager.pages[token]["touched"] = time.monotonic() - manager.idle_seconds - 1
+        manager.sweep()
+        self.assertFalse(self.app.extensions["storage"].folder("baloot", meta["run"]).exists())
+        self.assertEqual(self.client.get(base).status_code, 410)
 
-    def test_restart_interrupts_saved_jobs_without_claiming_an_active_worker(self):
-        base, metadata = self.upload()
-        folder = self.app.extensions["storage"].folder("baloot", metadata["run"])
-        for index, status in enumerate(("running", "stopping")):
-            atomic_json(folder / "jobs" / (str(index) * 32 + ".json"), {"status": status, "done": 1})
-        restarted = create_app({"TESTING": True, "STORAGE_ROOT": self.root / "web"}).test_client()
-        self.assertEqual(restarted.get("/api/jobs/active").get_json(), {"job": None})
-        for index in range(2):
-            saved = restarted.get(base + "/jobs/" + str(index) * 32).get_json()
-            self.assertEqual((saved["status"], saved["done"]), ("interrupted", 1))
+    def test_cleanup_waits_for_inflight_request_and_rejects_late_report_start(self):
+        from werkzeug.exceptions import Gone
+        _, meta = self.upload()
+        manager = self.app.extensions["workspaces"]
+        token = self.client.environ_base["HTTP_X_WORKSPACE"]
+        with self.client.session_transaction() as session:
+            owner = session["csrf"]
+        manager.acquire(token, owner)
+        self.close()
+        folder = self.app.extensions["storage"].folder("baloot", meta["run"])
+        self.assertTrue(folder.exists())
+        with self.assertRaises(Gone):
+            manager.start_report(token, "baloot", meta["run"], self.config, self.options)
+        manager.release(token)
+        self.assertFalse(folder.exists())
 
-    def test_other_busy_locks_do_not_return_an_active_report(self):
-        base, metadata = self.upload()
-        folder = self.app.extensions["storage"].folder("baloot", metadata["run"])
-        job = "a" * 32
-        atomic_json(folder / "jobs" / (job + ".json"), {"status": "complete"})
-        with self.app.extensions["feishu_lock"]:
-            response = self.client.post(base + "/jobs/" + job + "/push/feishu", headers=self.headers)
-        self.assertEqual(response.status_code, 409)
-        self.assertEqual(set(response.get_json()), {"error"})
+    def test_restart_removes_temporary_data_and_keeps_legacy_records(self):
+        _, meta = self.upload()
+        temporary = self.app.extensions["storage"].folder("baloot", meta["run"])
+        legacy = self.app.extensions["storage"].folder("baloot", "f" * 32)
+        atomic_json(legacy / "upload.json", {"legacy": True})
+        create_app({"TESTING": True, "STORAGE_ROOT": self.root / "web"})
+        self.assertFalse(temporary.exists())
+        self.assertTrue(legacy.exists())

@@ -93,7 +93,7 @@ def request_json(prompt, payload, config, validate, should_stop=None):
             check_stop(should_stop)
             try:
                 response = client.chat.completions.create(model=model_name(config), temperature=0,
-                    extra_body={"reasoning": {"enabled": False}},
+                    extra_body={"reasoning": {"enabled": True}},
                     response_format={"type": "json_object"}, messages=[
                         {"role": "system", "content": prompt},
                         {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}])

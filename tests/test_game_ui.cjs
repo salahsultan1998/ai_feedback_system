@@ -31,6 +31,7 @@ function boot(options = {}) {
     for (const selector of ['meta[name="csrf-token"]', "#data-table thead", "#data-table tbody", ".table-scroll"]) nodes.set(selector, element());
     const game = options.game || "baloot";
     nodes.get("#workspace").dataset.game = game;
+    nodes.get("#workspace").dataset.workspace = options.workspaceToken || "test-workspace";
     const calls = [];
     const requests = [], windowListeners = {};
     const server = {pushStatus: options.pushStatus || "unknown", version: "revision-1", html: "<h1>Report</h1>",
@@ -100,7 +101,7 @@ function boot(options = {}) {
                 if (response !== undefined) return response;
             }
             let data;
-            if (path === "/api/jobs/active") data = {job:null};
+            if (path === "/api/jobs/active") data = {busy:false};
             else if (path.includes("/preview?")) data = {columns: ["反馈ID"], rows: [["0001"]], page: 1, page_size: 50, total: 1};
             else if (path.endsWith("/selection")) data = {
                 ready: true, periods: {previous: {start:"2026-10-12",end:"2026-10-15"}},

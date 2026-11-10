@@ -3,6 +3,7 @@ const $ = selector => document.querySelector(selector);
 const workspace = $("#workspace");
 const base = `/api/games/${encodeURIComponent(workspace.dataset.game)}/uploads`;
 const csrf = $('meta[name="csrf-token"]').content;
+const workspaceToken = workspace.dataset.workspace;
 const uploadHint = $("#file-summary").textContent;
 let run = null, page = 1, totalPages = 1, selection = null, job = null;
 let busy = false, uploading = false, filePending = false, timer = null, selectionVersion = 0;
@@ -11,8 +12,8 @@ let reviewState = null, reviewFields = [];
 let bugReviewState = null, reviewMode = "suggestions";
 let editingReview = false, loadingReview = false, savingReview = false, pushing = false;
 let lastPush = {};
-let recovering = true, recoveryChecked = false, blockedJob = null, recoveryJob = null, activeTimer = null;
-const recoveryKey = `feedback-report:${workspace.dataset.game}`;
+let recovering = true, recoveryChecked = false, blockedJob = false, activeTimer = null;
+let leaving = false, heartbeatTimer = null;
 
 $("#upload-form").reset();
 $("#report-form").reset();
@@ -56,12 +57,12 @@ function error(message) {
 
 async function api(url, options = {}) {
     const response = await fetch(url, {cache: "no-store", ...options,
-        headers: {"X-CSRF-Token": csrf, ...options.headers}});
+        headers: {"X-CSRF-Token": csrf, "X-Workspace": workspaceToken, ...options.headers}});
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
         const failure = new Error(data.error || "请求失败，请刷新页面后重试。");
         failure.status = response.status;
-        failure.activeJob = data.active_job;
+        failure.busy = data.busy;
         throw failure;
     }
     return data;
@@ -74,128 +75,54 @@ function post(url, data) {
 function runUrl() { return `${base}/${run}`; }
 function jobUrl() { return `${runUrl()}/jobs/${job}`; }
 
-function rememberedJob() {
-    const url = new URL(window.location.href);
-    if (url.searchParams.get("upload") && url.searchParams.get("job")) {
-        return {run: url.searchParams.get("upload"), job: url.searchParams.get("job")};
-    }
-    try { return JSON.parse(window.sessionStorage.getItem(recoveryKey)); }
-    catch (_) { return null; }
-}
-
-function rememberJob(reference = {run, job}) {
-    try { window.sessionStorage.setItem(recoveryKey, JSON.stringify(reference)); }
-    catch (_) { /* Server discovery and the URL still recover the active report. */ }
-    const url = new URL(window.location.href);
-    url.searchParams.set("upload", reference.run);
-    url.searchParams.set("job", reference.job);
-    history.replaceState(null, "", url);
-}
-
 function forgetJob() {
-    try { window.sessionStorage.removeItem(recoveryKey); }
-    catch (_) { /* A blocked browser store must not prevent using the workspace. */ }
+    try { window.sessionStorage.removeItem(`feedback-report:${workspace.dataset.game}`); }
+    catch (_) { /* Older report references are never restored. */ }
     const url = new URL(window.location.href);
     url.searchParams.delete("upload");
     url.searchParams.delete("job");
     history.replaceState(null, "", url);
 }
 
-function showRecovery(data, message) {
-    recoveryJob = data;
-    $("#report-recovery").hidden = false;
-    $("#recovery-message").textContent = message;
-    $("#recovery-open").textContent = data ? "打开报告" : "重新连接";
-}
-
-async function openRecoveredJob(data) {
-    const source = `${base}/${encodeURIComponent(data.run)}`;
-    let metadata, status;
-    try {
-        [metadata, status] = await Promise.all([
-            api(source), api(`${source}/jobs/${encodeURIComponent(data.id)}`)
-        ]);
-    } catch (failure) {
-        failure.missingRecord = [400, 404].includes(failure.status);
-        throw failure;
-    }
-    clearTimeout(timer);
-    $("#upload-form").reset();
-    filePending = false;
-    selection = null;
-    job = data.id;
-    $("#report-preview").hidden = true;
-    $("#report-preview").replaceChildren();
-    $("#report-empty").hidden = false;
-    $("#download-md").removeAttribute("data-ready");
-    try { await loadUpload(metadata, status.options); }
-    catch (failure) { error(failure.message); }
-    if (!blockedJob) $("#report-recovery").hidden = true;
-    await displayJob(status);
-}
-
-async function watchActiveJob() {
-    const previous = blockedJob;
-    try {
-        const active = (await api("/api/jobs/active")).job;
-        if (blockedJob !== previous) return;
-        blockedJob = active;
-        if (blockedJob) showRecovery(blockedJob, "另一个报告正在处理，可打开查看进度或停止处理");
-        else if (previous && recoveryJob?.id === previous.id) {
-            showRecovery(previous, "原报告已结束，可打开查看结果或处理状态");
-        }
-        controls();
-    } catch (_) { /* Keep the known worker reservation until the server can confirm it ended. */ }
-    if (blockedJob) activeTimer = setTimeout(watchActiveJob, 3000);
-}
-
-async function recoverWorkspace(preferred = null) {
-    recovering = true;
+async function checkAvailability() {
     clearTimeout(activeTimer);
-    $("#recovery-open").disabled = true;
-    controls();
-    let reference;
     try {
-        const active = (await api("/api/jobs/active")).job;
+        const data = await api("/api/jobs/active");
+        blockedJob = data.busy;
         recoveryChecked = true;
-        blockedJob = active && active.game !== workspace.dataset.game ? active : null;
-        if (blockedJob) {
-            showRecovery(blockedJob, "另一个游戏的报告正在处理，可打开查看进度或停止处理");
-            clearTimeout(activeTimer);
-            activeTimer = setTimeout(watchActiveJob, 3000);
-        }
-        reference = active && !blockedJob ? {run: active.run, job: active.id} : preferred || rememberedJob();
-        if (reference && typeof reference.run === "string" && typeof reference.job === "string") {
-            rememberJob(reference);
-            await openRecoveredJob({run: reference.run, id: reference.job});
-        } else {
-            forgetJob();
-            if (!blockedJob) $("#report-recovery").hidden = true;
-        }
+        $("#report-recovery").hidden = !blockedJob;
+        $("#recovery-message").textContent = "另一个报告正在处理或清理中，结束后即可生成";
     } catch (failure) {
-        if (failure.missingRecord) {
-            forgetJob();
-            error("原报告记录已不存在，请重新上传文件");
-        } else {
-            recoveryChecked = false;
-            showRecovery(null, "暂时无法恢复报告，重新连接后可继续查看进度");
-        }
+        recoveryChecked = false;
+        $("#report-recovery").hidden = false;
+        $("#recovery-message").textContent = failure.message;
     } finally {
         recovering = false;
-        $("#recovery-open").disabled = false;
         controls();
     }
+    if (!leaving && (blockedJob || !recoveryChecked)) activeTimer = setTimeout(checkAvailability, 3000);
 }
 
-$("#recovery-open").addEventListener("click", async () => {
-    if (recovering || uploading || editingReview || loadingReview || savingReview || pushing) return;
-    if (recoveryJob && recoveryJob.game !== workspace.dataset.game) {
-        const target = new URL(`/games/${encodeURIComponent(recoveryJob.game)}`, window.location.href);
-        target.searchParams.set("upload", recoveryJob.run);
-        target.searchParams.set("job", recoveryJob.id);
-        window.location.href = target.href;
-    } else await recoverWorkspace(recoveryJob ? {run: recoveryJob.run, job: recoveryJob.id} : null);
+async function heartbeat() {
+    try { await post("/api/workspaces/ping", {}); }
+    catch (failure) {
+        if (failure.status === 410) {
+            error("此工作区已过期，请刷新后重新上传文件");
+            return;
+        }
+    }
+    if (!leaving) heartbeatTimer = setTimeout(heartbeat, 60000);
+}
+
+window.addEventListener("pagehide", () => {
+    leaving = true;
+    clearTimeout(timer);
+    clearTimeout(activeTimer);
+    clearTimeout(heartbeatTimer);
+    fetch("/api/workspaces/close", {method: "POST", keepalive: true,
+        headers: {"X-CSRF-Token": csrf, "X-Workspace": workspaceToken}}).catch(() => {});
 });
+$("#recovery-open").addEventListener("click", checkAvailability);
 
 function bugDraft(field) {
     return {id: field.item.id, text: field.input.value, included: field.included.checked,
@@ -768,8 +695,8 @@ async function displayJob(data) {
     $("#result-title").textContent = complete ? "报告已完成" : "报告进度";
     $("#downloads").hidden = !complete || $("#report-tab").getAttribute("aria-selected") !== "true";
     if (complete) {
-        $("#download-md").href = `${jobUrl()}/download/markdown`;
-        $("#download-excel").href = `${jobUrl()}/download/excel`;
+        $("#download-md").href = `${jobUrl()}/download/markdown?workspace=${encodeURIComponent(workspaceToken)}`;
+        $("#download-excel").href = `${jobUrl()}/download/excel?workspace=${encodeURIComponent(workspaceToken)}`;
         $("#download-md").dataset.ready = "true";
         const p = data.result.selection.periods.current;
         $("#job-message").textContent = `${p.start} — ${p.end} · 本期 ${data.result.total} 条 · 上周同期 ${data.result.previous_total} 条`;
@@ -818,7 +745,6 @@ $("#report-form").addEventListener("submit", async event => {
     try {
         const data = await post(`${runUrl()}/reports`, dates());
         job = data.id;
-        rememberJob();
         resetReview();
         $("#report-preview").replaceChildren();
         $("#report-preview").hidden = true;
@@ -830,18 +756,15 @@ $("#report-form").addEventListener("submit", async event => {
         busy = false;
         controls();
         $("#job-status").hidden = true;
-        if (failure.activeJob) {
-            blockedJob = failure.activeJob;
-            if (blockedJob.game === workspace.dataset.game) rememberJob({run: blockedJob.run, job: blockedJob.id});
-            showRecovery(blockedJob, "已有报告正在处理，请打开原报告查看进度或停止处理");
-            clearTimeout(activeTimer);
-            activeTimer = setTimeout(watchActiveJob, 3000);
-            controls();
+        if (failure.busy) {
+            await checkAvailability();
         } else error(failure.message);
     }
 });
 
-const workspaceReady = recoverWorkspace();
+forgetJob();
+const workspaceReady = checkAvailability();
+heartbeatTimer = setTimeout(heartbeat, 60000);
 
 $("#stop-button").addEventListener("click", async () => {
     try { await displayJob(await post(`${jobUrl()}/stop`, {})); }

@@ -3,7 +3,7 @@ from datetime import timedelta
 import os
 from pathlib import Path
 
-from flask import Blueprint, current_app, jsonify, request, send_file, session, url_for
+from flask import Blueprint, current_app, g, jsonify, request, send_file, session, url_for
 import markdown
 from werkzeug.exceptions import HTTPException
 
@@ -28,15 +28,41 @@ def config_for(game):
 
 @api.before_request
 def csrf():
-    if request.method == "POST" and request.headers.get("X-CSRF-Token") != session.get("csrf", "missing"):
+    token = session.get("csrf")
+    if request.method == "POST" and (not token or request.headers.get("X-CSRF-Token") != token):
         return jsonify(error="页面已过期，请刷新后重试。"), 403
+    workspace = request.headers.get("X-Workspace")
+    if request.endpoint == "api.download":
+        workspace = request.args.get("workspace") or workspace
+    args = request.view_args or {}
+    current_app.extensions["workspaces"].acquire(workspace, token, args.get("game"), args.get("run"),
+                                                closing=request.endpoint == "api.close_workspace")
+    g.workspace = workspace
+
+
+@api.teardown_request
+def release_workspace(error):
+    workspace = g.pop("workspace", None)
+    if workspace:
+        current_app.extensions["workspaces"].release(workspace)
+
+
+@api.post("/workspaces/close")
+def close_workspace():
+    current_app.extensions["workspaces"].close(g.workspace)
+    return jsonify(closed=True)
+
+
+@api.post("/workspaces/ping")
+def ping_workspace():
+    return jsonify(ok=True)
 
 
 @api.errorhandler(ValueError)
 def invalid(error):
     response = {"error": str(error)}
     if isinstance(error, BusyError) and error.active_job is not None:
-        response["active_job"] = error.active_job
+        response["busy"] = True
     return jsonify(response), 409 if isinstance(error, (BusyError, report_review.ReviewConflict)) else 400
 
 
@@ -55,8 +81,7 @@ def upload(game):
     suffix = Path(file.filename or "").suffix.lower() if file else ""
     if suffix not in {".csv", ".xlsx"}:
         raise ValueError("请选择 CSV 或 .xlsx 文件。")
-    storage, _ = services()
-    run, folder = storage.create(game)
+    run, folder = current_app.extensions["workspaces"].upload(g.workspace, game)
     source = folder / ("source" + suffix)
     file.save(source)
     raw = read_feedback(source, config)
@@ -120,7 +145,7 @@ def selection(game, run):
 
 @api.post("/games/<game>/uploads/<run>/reports")
 def report(game, run):
-    folder, config, jobs = load_run(game, run)
+    folder, config, _ = load_run(game, run)
     selected = options()
     _, info = prepare_selection(folder, config, **selected)
     if not info["ready"]:
@@ -130,13 +155,13 @@ def report(game, run):
     # Snapshot the environment model so a running job has stable processing settings.
     from feedback.ai_client import model_name
     config["model"] = model_name(config)
-    return jsonify(jobs.start(game, run, config, selected)), 202
+    return jsonify(current_app.extensions["workspaces"].start_report(g.workspace, game, run, config, selected)), 202
 
 
 @api.get("/jobs/active")
 def active_job():
     _, jobs = services()
-    return jsonify(job=jobs.current())
+    return jsonify(busy=jobs.current() is not None)
 
 
 @api.get("/games/<game>/uploads/<run>/jobs/<job>")
@@ -163,7 +188,7 @@ def report_response(folder, game, run, job):
     text = (folder / "report.md").read_text(encoding="utf-8")
     html = markdown.markdown(text, extensions=["tables"])
     # Export's relative link points to the matching downloadable workbook in browser preview.
-    excel_url = url_for("api.download", game=game, run=run, job=job, kind="excel")
+    excel_url = url_for("api.download", game=game, run=run, job=job, kind="excel", workspace=g.workspace)
     html = html.replace('href="feedback_details.xlsx"', f'href="{excel_url}"')
     return jsonify(html=html, feishu=feishu.state(folder, config_for(game)),
                    review=report_review.summary(folder, text=text),

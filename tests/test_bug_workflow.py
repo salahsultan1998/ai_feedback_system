@@ -10,7 +10,7 @@ from feedback import bug_review
 from feedback.processing import fingerprint
 from feedback.storage import atomic_csv
 from feedback.workflow import run_report
-from tests.helpers import BaseTest, fake_request
+from tests.helpers import BaseTest, fake_request, workspace_client
 
 
 def bug_model(prompt, payload, config, validate, should_stop=None):
@@ -56,7 +56,7 @@ class BugReviewWebTests(BaseTest):
         self.raw.loc[self.raw['反馈ID'].eq('005'), '反馈标签'] = '建议'
         self.raw.loc[self.raw['反馈ID'].eq('006'), '反馈时间'] = '2026-10-20'
         self.app = create_app({'TESTING': True, 'STORAGE_ROOT': self.root / 'web'})
-        self.client = self.app.test_client()
+        self.client = workspace_client(self.app)
         self.client.get('/')
         with self.client.session_transaction() as session:
             self.headers = {'X-CSRF-Token': session['csrf']}

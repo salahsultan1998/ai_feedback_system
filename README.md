@@ -1,6 +1,6 @@
 # AI 反馈统计
 
-Local game-feedback reporting app: import feedback, translate and classify it, compare periods, review the report, and optionally push it to Feishu. Baloot is configured; Okey and 新疆 have placeholder pages.
+Game-feedback reporting app: import feedback, translate and classify it, compare periods, review the report, and optionally push it to Feishu. Baloot is configured; Okey and 新疆 have placeholder pages.
 
 ## Run
 
@@ -23,6 +23,10 @@ OPENROUTER_API_KEY=your-openrouter-key
 
 Open [http://127.0.0.1:5050](http://127.0.0.1:5050). `PORT` optionally changes the port. Run one server process for one local user. Restart after changing `.env` or Python code. Credentials stay on the server; nothing is imported from `backup/`.
 
+## Deploy for colleagues
+
+Follow [the single-server deployment guide](deploy/README.md) for Gunicorn, systemd, HTTPS through Nginx, and private temporary storage. The supplied setup keeps one app process and one active report slot shared by all colleagues. Each page owns its uploads and reports. Authentication is not included; restrict access to your company network or VPN. Start with [.env.example](.env.example) for production settings.
+
 ## Use the app
 
 1. Select Baloot and upload CSV or `.xlsx`. Only the first Excel sheet is read. The preview includes rows that will later be excluded.
@@ -33,9 +37,11 @@ Open [http://127.0.0.1:5050](http://127.0.0.1:5050). `PORT` optionally changes t
 
 Uploading, previewing, selecting dates and manual editing make no AI calls. Generating reports uses the configured paid API. For a sample, upload `examples/feedback_sample.csv` and select **2026-10-19 through 2026-10-22**.
 
-Leaving a game or refreshing does not cancel processing. Reopening the game reconnects to its active report and restores the original upload, dates, progress and Stop button. A report that finished while you were away reopens with its downloads. Stopped, failed or interrupted reports can be retried against the same upload to reuse completed work; recovery never starts another AI request automatically.
+Each page is a temporary workspace. Refreshing or leaving the page opens a blank workspace next time and requests cancellation and deletion of the old page's uploads, translations, analysis cache and reports. Download anything you want to keep before leaving. No report reference is saved in browser storage or restored from the URL. Tabs and browser sessions cannot access or clean up one another's workspaces.
 
-The browser remembers the report reference for each game for the current tab session and includes it in the page URL. The server remains authoritative about active work, including tasks started in another tab. If another report blocks generation, **打开报告** opens its progress or saved result. Only one report processes at a time; Stop releases that slot after in-flight work finishes. Uploading a replacement file starts a new workspace. A server restart marks unfinished tasks interrupted.
+Cleanup waits for in-flight requests (including Feishu sends) and the report worker to finish; it never deletes files while they are being written. The server checks every 15 seconds. If the browser cannot deliver its close request, 30 minutes without a page heartbeat expires the workspace and requests cancellation. A page sends a heartbeat every minute while open; a suspended browser may expire and require a fresh upload. Stop/retry still reuses completed work while the same page remains open. A server restart deletes remaining marked temporary workspaces. Only one report processes at a time; other pages see a busy notice without receiving its report references.
+
+Already downloaded files and Feishu messages/sheets are not deleted. Feishu duplicate-send protection lasts only for the current workspace; uploading the same data again creates a new report, so check the destination before sending it again.
 
 ## Data and report rules
 
@@ -148,6 +154,7 @@ HTTPS certificate verification remains enabled. If Python's certificate store fa
 
 ```text
 storage/<game>/<upload-id>/
+  workspace.json              # Marks this folder for automatic cleanup
   source.csv or source.xlsx
   rows.csv
   upload.json
@@ -165,14 +172,14 @@ storage/<game>/<upload-id>/
     feishu_sheet.json         # Created when syncing details
 ```
 
-Uploads and report runs are isolated. Record results are reused within an upload, not across separate uploads. Storage is private and is not served as a static folder. There is no database or automatic deletion: back up storage and configuration to retain reports and duplicate-send protection across restarts. `.env`, `.venv/`, `storage/` and `backup/` are excluded from Git. Never run multiple app processes against the same storage folder.
+Files above are temporary working data, reused only within the same page. Storage defaults to the repository's `storage/` directory; production uses the private directory specified by `FEEDBACK_STORAGE`. Do not back up new temporary report data. Back up code/configuration and protect credentials separately. Older folders without the temporary marker are left untouched during this migration; they are not exposed by the page-owned API. `.env`, `.venv/`, `storage/` and `backup/` are excluded from Git. Never run multiple app processes against the same storage folder; production startup enforces exclusive ownership.
 
 ## Verification
 
 ```sh
 .venv/bin/python -B -m unittest discover -s tests -v
 node tests/test_game_ui.cjs
-node tests/test_navigation_recovery.cjs
+node tests/test_workspace_lifecycle.cjs
 node tests/test_suggestion_removal.cjs
 ```
 

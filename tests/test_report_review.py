@@ -14,7 +14,7 @@ from app import create_app
 from feedback import report_review
 from feedback.review_state import mark_push_started
 from feedback.exports.markdown import render_markdown
-from tests.helpers import BaseTest, fake_request
+from tests.helpers import BaseTest, fake_request, workspace_client
 
 
 class ReportReviewTests(TestCase):
@@ -169,7 +169,7 @@ class ReportReviewWebTests(BaseTest):
         super().setUp()
         self.raw.loc[self.raw["反馈ID"].isin(["004", "005"]), "反馈标签"] = "建议"
         self.app = create_app({"TESTING": True, "STORAGE_ROOT": self.root / "web"})
-        self.client = self.app.test_client()
+        self.client = workspace_client(self.app)
         self.client.get("/")
         with self.client.session_transaction() as session:
             self.headers = {"X-CSRF-Token": session["csrf"]}

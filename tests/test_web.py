@@ -1,18 +1,17 @@
 from io import BytesIO
-import json
 import os
 import time
 from unittest.mock import patch
 
 from app import create_app
-from tests.helpers import BaseTest, fake_request
+from tests.helpers import BaseTest, fake_request, workspace_client
 
 
 class WebTests(BaseTest):
     def setUp(self):
         super().setUp()
         self.app = create_app({"TESTING":True,"STORAGE_ROOT":self.root/"web"})
-        self.client = self.app.test_client()
+        self.client = workspace_client(self.app)
         self.client.get("/")
         with self.client.session_transaction() as session:
             self.headers = {"X-CSRF-Token":session["csrf"]}
@@ -89,7 +88,7 @@ class WebTests(BaseTest):
         self.assertIn("Access denied", status["message"])
         self.assertTrue(any("HTTP 403" in line for line in logs.output))
 
-    def test_restart_marks_unfinished_job_interrupted(self):
+    def test_restart_discards_temporary_uploads(self):
         base=self.upload()
         run=base.split("/")[-1]
         from feedback.storage import atomic_json
@@ -100,4 +99,4 @@ class WebTests(BaseTest):
             self.assertEqual(self.client.post(base+"/jobs/"+job+"/push/feishu", json={}, headers=self.headers).status_code, 400)
             sender.assert_not_called()
         create_app({"TESTING":True,"STORAGE_ROOT":self.root/"web"})
-        self.assertEqual(json.loads((folder/"jobs"/(job+".json")).read_text())["status"],"interrupted")
+        self.assertFalse(folder.exists())

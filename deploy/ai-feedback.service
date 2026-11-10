@@ -1,0 +1,30 @@
+[Unit]
+Description=AI feedback reporting
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=ai-feedback
+Group=ai-feedback
+WorkingDirectory=/opt/ai-feedback
+EnvironmentFile=/etc/ai-feedback.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/ai-feedback/.venv/bin/gunicorn -c gunicorn.conf.py app:create_app()
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=90
+KillMode=mixed
+StateDirectory=ai-feedback
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,11 +1,20 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+import re
 
 import pandas as pd
 
 from feedback.config import load_config
 from feedback.storage import atomic_csv
+
+
+def workspace_client(app):
+    client = app.test_client()
+    page = client.get("/games/baloot")
+    token = re.search(r'data-workspace="([^"]+)"', page.get_data(as_text=True)).group(1)
+    client.environ_base["HTTP_X_WORKSPACE"] = token
+    return client
 
 
 def rows(config):

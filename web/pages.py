@@ -7,7 +7,7 @@ from feedback.config import get_game, list_games
 pages = Blueprint("pages", __name__)
 
 
-@pages.before_app_request
+@pages.before_request
 def prepare_session():
     session.setdefault("csrf", secrets.token_hex(24))
 
@@ -23,4 +23,5 @@ def game(code):
         choice = get_game(code, current_app.config["PROJECT_ROOT"])
     except ValueError:
         abort(404)
-    return render_template("game.html", game=choice)
+    token = current_app.extensions["workspaces"].create(session["csrf"]) if choice["enabled"] else None
+    return render_template("game.html", game=choice, workspace_token=token)
