@@ -65,6 +65,10 @@ def detail_rows(folder):
         legacy_columns = PREVIOUS_DETAIL_COLUMNS[:-1]
         allowed_columns = (current_columns, previous_category_columns, PREVIOUS_COMPACT_COLUMNS,
                            PREVIOUS_DETAIL_COLUMNS, legacy_columns)
+        snapshot = folder / "config_snapshot.json"
+        detail_columns = json.loads(snapshot.read_text(encoding="utf-8")).get("detail_columns") if snapshot.exists() else None
+        if detail_columns:
+            allowed_columns = (*allowed_columns, list(detail_columns.values()))
         headers, rows = None, []
         for title, period in (("本期反馈明细", "本期"), ("上周同期反馈明细", "上周同期")):
             if title not in book.sheetnames:

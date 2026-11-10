@@ -25,7 +25,7 @@ def write_excel(snapshot, config, path):
     if len(snapshot.get("excluded", [])):
         groups.append(("excluded", "排除反馈明细"))
     for key, title in groups:
-        columns = EXCLUDED_COLUMNS if key == "excluded" else COLUMNS
+        columns = EXCLUDED_COLUMNS if key == "excluded" else config.get("detail_columns", COLUMNS)
         rows = snapshot[key].loc[~abuse_mask(snapshot[key])].sort_values(["最终标签", "具体主题", "三级主题", "反馈时间", "反馈ID"])
         if key == "excluded" and rows.empty:
             continue

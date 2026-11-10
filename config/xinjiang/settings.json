@@ -1,0 +1,48 @@
+{
+  "candidate_source": "ai",
+  "column_mapping": {
+    "反馈ID": "反馈ID",
+    "用户ID": "UID",
+    "VIP等级": "VIP等级",
+    "用户自己填写的内容": "反馈内容",
+    "附加信息": "设备信息",
+    "反馈时间": "反馈日期",
+    "反馈标签": "反馈标签",
+    "用户主动选择的标签": "用户主动选择的标签",
+    "充值金额": "充值金额"
+  },
+  "detail_columns": {
+    "最终标签": "I 类别",
+    "具体主题": "II 类别",
+    "反馈ID": "反馈ID",
+    "用户ID": "用户ID",
+    "充值金额": "充值金额",
+    "反馈时间": "反馈时间",
+    "中文翻译": "中文翻译",
+    "用户自己填写的内容": "原文",
+    "附加信息": "设备信息"
+  },
+  "ignored_labels": [],
+  "suggestion_labels": [
+    "建议"
+  ],
+  "bug_labels": [
+    "BUG"
+  ],
+  "concurrency": 4,
+  "classification_batch_size": 10,
+  "classification_batch_max_chars": 16000,
+  "timeout_seconds": 120,
+  "feishu": {
+    "enabled": false,
+    "webhook_env": "FEISHU_XINJIANG_WEBHOOK",
+    "spreadsheet": {
+      "enabled": false,
+      "url": "",
+      "spreadsheet_token": "",
+      "app_id_env": "FEISHU_APP_ID",
+      "app_secret_env": "FEISHU_APP_SECRET",
+      "batch_rows": 500
+    }
+  }
+}

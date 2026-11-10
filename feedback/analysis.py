@@ -45,7 +45,8 @@ def fragments(rows, config):
         for offset in range(0, len(row["中文翻译"]), size):
             yield {"feedback_id": str(row["反馈ID"]), "label": row["最终标签"],
                    "theme": row["具体主题"] or "未细分", "subtheme": row["三级主题"],
-                   "is_suggestion": is_suggestion_label(row["反馈标签"], config),
+                   "is_suggestion": (row["是否建议"] == "是" if config.get("candidate_source") == "ai"
+                                     else is_suggestion_label(row["反馈标签"], config)),
                    "text": row["中文翻译"][offset:offset + size]}
 
 

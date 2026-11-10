@@ -1,6 +1,6 @@
 # AI 反馈统计
 
-Game-feedback reporting app: import feedback, translate and classify it, compare periods, review the report, and optionally push it to Feishu. Baloot is configured; Okey and 新疆 have placeholder pages.
+Game-feedback reporting app: import feedback, translate and classify it, compare periods, review the report, and optionally push it to Feishu. Baloot and 新疆 are configured; Okey has a placeholder page.
 
 ## Run
 
@@ -29,7 +29,7 @@ Follow [the single-server deployment guide](deploy/README.md) for Gunicorn, syst
 
 ## Use the app
 
-1. Select Baloot and upload CSV or `.xlsx`. Only the first Excel sheet is read. The preview includes rows that will later be excluded.
+1. Select Baloot or 新疆 and upload CSV or `.xlsx`. Only the first Excel sheet is read. The preview includes rows that will later be excluded.
 2. Select inclusive dates. October 19–22 compares with October 12–15, exactly seven days earlier. Only records in either period enter AI processing; overlapping records are processed once and counted in each applicable period.
 3. Check the counts and coverage warning. If the export does not span both periods, generation requires confirmation that it is complete and the missing boundary dates truly had no feedback. Days without records alone do not prove an incomplete export.
 4. Generate the report. **Stop** lets in-flight requests finish and saves successful results. Retry the same upload to reuse them. Every selected record must finish successfully before a report is exported.
@@ -49,7 +49,7 @@ Already downloaded files and Feishu messages/sheets are not deleted. Feishu dupl
 - IDs remain strings, including leading zeros. Empty IDs/text, invalid dates, ignored source labels and duplicate IDs are excluded; the first valid instance of an ID is retained. Different IDs with identical text remain separate records. `ignored_labels` matching ignores case.
 - Dates follow source-system local time. Uniform timezone offsets retain wall-clock dates; mixed timezone formats must be normalized before upload.
 - AI returns a Chinese translation, a strict validity decision and one validated I/II/III category path. Python computes counts, shares and period changes. Short, understandable feedback remains valid. Unclear feedback is excluded from statistics and preserved with its reason in **排除反馈明细**. Feedback containing actual abuse is excluded in full from analysis, statistics and every Excel sheet; its processing decision remains cached for retries.
-- Suggestion and BUG candidates come only from valid current-period rows whose original `反馈标签`, after trimming, exactly matches `suggestion_labels` or `bug_labels`. Matching is case-sensitive; Baloot uses `["建议"]` and `["BUG"]`. The player-selected tag and any model-supplied suggestion flag do not control candidacy.
+- For games using the default `candidate_source: "source_label"` (including Baloot), suggestion and BUG candidates come only from valid current-period rows whose original `反馈标签`, after trimming, exactly matches `suggestion_labels` or `bug_labels`. Matching is case-sensitive; Baloot uses `["建议"]` and `["BUG"]`. The player-selected tag and any model-supplied suggestion flag do not control candidacy.
 - Suggestions merge equivalent requests within one I category and retain their supporting feedback IDs. BUG analysis merges equivalent malfunctions only within the same complete category path, retaining every recognized issue and contributor without a top-N cutoff. Both pools are independent of module growth thresholds; no candidates means no corresponding analysis requests.
 - The report contains an overview, evidence-linked suggestions, suspected BUGs when enabled, and module statistics. Report text is Chinese; original-language source text remains available in the review editor and detail exports. Suggestions, BUGs and issue analysis cite **feedback IDs**.
 - Excel contains **本期反馈明细** and **上周同期反馈明细**, plus the excluded sheet when needed. Its nine valid-detail columns retain IDs, source text, translation and other detail fields. I/II/III paths appear in two category columns, for example `玩法相关 | 活动（许愿树）`. Statistics aggregate by I category. Source labels and the internal suggestion flag are omitted from new exports.
@@ -97,6 +97,20 @@ Baloot's report rules currently allow 10 suggestions, analyze up to three issue 
 Each I category needs a finite, nonnegative `module_growth_thresholds` value; Baloot currently uses `0.3` (30%) for all six categories. A module with current feedback is flagged when `(current - previous) / previous >= threshold`. Any positive count on a zero previous baseline is new and flagged. A zero threshold includes flat positive counts; declines are not flagged. No minimum count or absolute increase is required.
 
 Tasks capture their configuration and completed reports save `config_snapshot.json`. Model, classification prompt, taxonomy or source suggestion-rule changes can require reprocessing; batch-size/concurrency changes reuse matching record results. Report-only changes reuse translations and invalidate only affected analysis caches. Completed reports are never rewritten automatically. To add a game, provide its own settings, taxonomy and required prompts, then enable it in `games.json`; `prompts/bugs.md` enables BUG analysis.
+
+## 新疆游戏
+
+`config/xinjiang/` uses the supplied 新疆游戏标签 workbook: six modules, 30 themes, 137 subthemes and four confirmed terminology entries. Its own classification prompt handles Uyghur feedback; it does not infer game mechanics beyond the supplied taxonomy and terminology.
+
+Upload columns map `UID` to user ID, `反馈内容` to source text, `反馈日期` to time, and `设备信息` to additional information. `反馈ID` is required; `充值金额` is preserved as its own detail-export column. Missing original labels and VIP fields are allowed. Phone numbers and preexisting translations are not used by the reporting pipeline; the original upload remains temporary workspace data.
+
+Xinjiang explicitly sets `candidate_source: "ai"`. During the existing translation/classification call, AI also returns boolean suggestion and suspected-BUG flags. Valid feedback may belong to both pools. Suggestions and BUGs are then refined separately with evidence IDs and the existing review editors. These flags do not replace the three-level classification or change module statistics. Games that omit this setting retain original-source-label candidacy.
+
+Initial Xinjiang settings are four concurrent classification requests, ten records / 16,000 input characters per batch, and a 120-second timeout. Report thresholds are 20% for account, performance and violation modules, 30% for gameplay and other, and 15% for recharge. Limits are 20 suggestions, three issue themes per flagged module, three evidence IDs per issue analysis, and 12,000 analysis input characters. Tune these in its `settings.json` and `report_rules.json`; the global model and environment model override still apply.
+
+Feishu is initially disabled so missing credentials do not block report generation or downloads. To enable the bot, set `feishu.enabled` to `true` and supply `FEISHU_XINJIANG_WEBHOOK` in the environment. Spreadsheet sync is independently disabled; enable it only after filling `feishu.spreadsheet.url` and the optional verified `spreadsheet_token`, plus the named app credentials. No real destination has been invented.
+
+The supplied 2026-11-10 feedback workbook contains 40 records dated **2026-11-08** and no previous-week records. A report for that day cannot establish a valid week-over-week comparison without the earlier export. Use the existing complete-export confirmation only if you have verified that the absent period really had no feedback; otherwise supply the missing data.
 
 ## Feishu
 

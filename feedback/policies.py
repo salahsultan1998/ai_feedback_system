@@ -8,10 +8,14 @@ def is_suggestion_label(label, config):
 
 
 def suggestion_mask(rows, config):
+    if config.get("candidate_source") == "ai":
+        return rows["是否建议"].eq("是")
     return rows["反馈标签"].astype(str).str.strip().isin(config.get("suggestion_labels", ["建议"]))
 
 
 def bug_mask(rows, config):
+    if config.get("candidate_source") == "ai":
+        return rows["是否疑似BUG"].eq("是")
     return rows["反馈标签"].astype(str).str.strip().isin(config.get("bug_labels", ["BUG"]))
 
 

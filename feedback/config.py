@@ -36,6 +36,8 @@ def load_config(code, root=ROOT):
     config = {**load_settings(root), **read_json(folder / "settings.json")}
     config.update(game=code, name=game["name"], schema=read_json(folder / "labels.json"),
                   report=read_json(folder / "report_rules.json"))
+    if config.get("candidate_source", "source_label") not in {"source_label", "ai"}:
+        raise ValueError("candidate_source 必须为 source_label 或 ai。")
     for key in ("concurrency", "timeout_seconds", "max_rows", "max_report_days",
                 "classification_batch_size", "classification_batch_max_chars"):
         if type(config[key]) is not int or config[key] < 1:

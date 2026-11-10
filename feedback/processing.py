@@ -14,7 +14,6 @@ from .taxonomy import validate_path
 
 RESULT_COLUMNS = {"translation_zh": "中文翻译", "label": "最终标签", "theme": "具体主题", "subtheme": "三级主题",
                   "is_suggestion": "是否建议", "is_valid": "是否有效", "exclusion_reason": "排除原因"}
-OUTPUT = [*RESULT_COLUMNS.values(), "错误", "处理指纹"]
 EXCLUSION_REASONS = ["缺少明确反馈对象或诉求", "内容无法理解", ABUSE_REASON]
 logger = logging.getLogger(__name__)
 
@@ -36,6 +35,20 @@ label 为 I 类别，theme 为 II 类别，subtheme 为 theme.children 中的 II
 """
 
 
+def result_columns(config):
+    return {**RESULT_COLUMNS, **({"is_bug": "是否疑似BUG"} if config.get("candidate_source") == "ai" else {})}
+
+
+def batch_instructions(config):
+    if config.get("candidate_source") != "ai":
+        return BATCH_INSTRUCTIONS
+    return BATCH_INSTRUCTIONS.replace(
+        "不要判断或返回 is_suggestion，“是否建议”由后台按原标签确定，建议价值将在后续提炼阶段筛选。",
+        "每条结果还必须返回布尔值 is_suggestion 和 is_bug，按分类提示词独立识别建议候选和疑似 BUG 候选。两者可同时为 true；无效反馈两者均为 false。实际输出必须补齐这两个字段。",
+    ).replace('"is_valid":true,"exclusion_reason":""}',
+              '"is_valid":true,"exclusion_reason":"","is_suggestion":false,"is_bug":false}')
+
+
 def validate_result(result, config, original_label=""):
     if not isinstance(result, dict) or any(not isinstance(result.get(k), str) for k in ("translation_zh", "label", "theme", "subtheme", "exclusion_reason")):
         raise ValueError("模型必须返回翻译、三层分类和排除原因字符串。")
@@ -51,26 +64,36 @@ def validate_result(result, config, original_label=""):
             raise ValueError("有效反馈的排除原因必须为空。")
     elif label or theme or subtheme or reason not in config["schema"].get("exclusion_reasons", EXCLUSION_REASONS):
         raise ValueError("无效反馈须有合法排除原因，三层分类必须全部为空。")
-    return {"translation_zh": translation, "label": label, "theme": theme, "subtheme": subtheme,
+    checked = {"translation_zh": translation, "label": label, "theme": theme, "subtheme": subtheme,
             "is_suggestion": result["is_valid"] and is_suggestion_label(original_label, config),
             "is_valid": result["is_valid"], "exclusion_reason": reason}
+    if config.get("candidate_source") == "ai":
+        for field in ("is_suggestion", "is_bug"):
+            if type(result.get(field)) is not bool:
+                raise ValueError("AI 候选判断必须返回 is_suggestion 和 is_bug 布尔值。")
+            checked[field] = result["is_valid"] and result[field]
+    return checked
 
 
 def validate_cached_result(row, config):
-    value = {field: row.get(column) for field, column in RESULT_COLUMNS.items()}
-    for field in ("is_suggestion", "is_valid"):
+    value = {field: row.get(column) for field, column in result_columns(config).items()}
+    for field in (["is_suggestion", "is_valid", "is_bug"] if config.get("candidate_source") == "ai" else ["is_suggestion", "is_valid"]):
         if value[field] not in {"是", "否"}:
             raise ValueError("旧结果缺少有效性或建议判断，需要按新规则处理。")
         value[field] = value[field] == "是"
     checked = validate_result(value, config, row.get("反馈标签", ""))
     if value["is_suggestion"] != checked["is_suggestion"]:
         raise ValueError("旧建议判断与原标签不一致，需要按新规则处理。")
+    if config.get("candidate_source") == "ai" and value["is_bug"] != checked["is_bug"]:
+        raise ValueError("旧 BUG 候选与有效性判断不一致，需要重新处理。")
 
 
 def fingerprint(row, config):
     content = ["three-level-source-suggestions-no-abuse-v4", config["game"], ai_client.model_name(config), config["classification_prompt"], BATCH_INSTRUCTIONS,
                config.get("suggestion_labels", ["建议"]),
                str(row["反馈ID"]), str(row["用户自己填写的内容"]), str(row["反馈标签"])]
+    if config.get("candidate_source") == "ai":
+        content.extend(["ai-candidates-v1", batch_instructions(config)])
     return hashlib.sha256(json.dumps(content, ensure_ascii=False).encode()).hexdigest()
 
 
@@ -116,7 +139,9 @@ def process_feedback(rows, config, path, progress, should_stop=None):
         raise ValueError("翻译分类批量大小和输入长度限制必须为正整数。")
     saved = read_csv(path).set_index("反馈ID").to_dict("index") if path.exists() else {}
     result = rows.reset_index(drop=True).copy()
-    for column in OUTPUT:
+    columns = result_columns(config)
+    output = [*columns.values(), "错误", "处理指纹"]
+    for column in output:
         result[column] = ""
     pending = []
     for index, row in result.iterrows():
@@ -129,7 +154,7 @@ def process_feedback(rows, config, path, progress, should_stop=None):
             except ValueError:
                 valid = False
         if valid:
-            for column in OUTPUT:
+            for column in output:
                 result.at[index, column] = old[column]
         else:
             result.at[index, "处理指纹"] = key
@@ -151,7 +176,7 @@ def process_feedback(rows, config, path, progress, should_stop=None):
               "feedback": result.at[index, "用户自己填写的内容"],
               "original_label": result.at[index, "反馈标签"]} for index in pending]
     batches = list(make_batches(items, batch_size, max_chars))
-    prompt = config["classification_prompt"] + BATCH_INSTRUCTIONS
+    prompt = config["classification_prompt"] + batch_instructions(config)
 
     def record(answers, errors):
         nonlocal done
@@ -160,8 +185,8 @@ def process_feedback(rows, config, path, progress, should_stop=None):
         with lock:
             for feedback_id, answer in answers.items():
                 values = [("是" if value else "否") if type(value) is bool else value
-                          for value in (answer[field] for field in RESULT_COLUMNS)]
-                result.loc[indices[feedback_id], [*RESULT_COLUMNS.values(), "错误"]] = [*values, ""]
+                          for value in (answer[field] for field in columns)]
+                result.loc[indices[feedback_id], [*columns.values(), "错误"]] = [*values, ""]
             for feedback_id, error in errors.items():
                 result.at[indices[feedback_id], "错误"] = error
             done += len(answers)

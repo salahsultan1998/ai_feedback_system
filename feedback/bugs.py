@@ -20,7 +20,8 @@ def analyze_bugs(snapshot, config, cache_dir, progress, should_stop=None):
         current["反馈标签"] = ""
     current = current.loc[bug_mask(current, config)]
     if current.empty:
-        progress(stage="analysis", message="本期没有符合原标签的 BUG 候选，已跳过提炼", done=0, total=0)
+        progress(stage="analysis", message=("本期没有 AI 识别的 BUG 候选，已跳过提炼" if config.get("candidate_source") == "ai"
+                       else "本期没有符合原标签的 BUG 候选，已跳过提炼"), done=0, total=0)
         return []
     contexts = {str(row["反馈ID"]): (row["最终标签"], row["具体主题"], row["三级主题"])
                 for row in current.to_dict("records")}
