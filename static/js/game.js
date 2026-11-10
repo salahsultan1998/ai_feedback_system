@@ -204,7 +204,8 @@ function bugDraft(field) {
 
 function reviewDirty() {
     if (!editingReview) return false;
-    if (reviewMode !== "bugs") return reviewFields.some(({item, input}) => input.value !== item.text);
+    if (reviewMode !== "bugs") return reviewFields.some(({item, input, included}) =>
+        input.value !== item.text || included.checked !== (item.included !== false));
     return reviewFields.some(field => {
         const draft = bugDraft(field);
         return draft.text !== field.item.text || draft.included !== field.item.included ||
@@ -231,14 +232,14 @@ function reviewControls() {
     $("#save-review").textContent = savingReview ? "正在保存…" : "保存修改";
     $("#cancel-review").disabled = savingReview;
     $("#restore-suggestions").disabled = savingReview || !reviewFields.some(field => field.input.value !== field.item.original_text ||
-        (reviewMode === "bugs" && (!field.included.checked || field.sourceChecks.some(source => !source.input.checked))));
+        !field.included.checked || (reviewMode === "bugs" && field.sourceChecks.some(source => !source.input.checked)));
     for (const field of reviewFields) {
-        field.input.disabled = savingReview || (reviewMode === "bugs" && !field.included.checked);
+        field.input.disabled = savingReview || !field.included.checked;
+        field.input.required = field.included.checked;
+        field.included.disabled = savingReview;
+        field.card.classList.toggle("excluded", !field.included.checked);
+        field.removed.hidden = field.included.checked;
         if (reviewMode === "bugs") {
-            field.input.required = field.included.checked;
-            field.included.disabled = savingReview;
-            field.card.classList.toggle("excluded", !field.included.checked);
-            field.removed.hidden = field.included.checked;
             for (const source of field.sourceChecks) source.input.disabled = savingReview || !field.included.checked;
         }
     }
@@ -335,27 +336,42 @@ function renderReview(detail) {
     const cards = detail.suggestions.map((item, index) => {
         const card = document.createElement("section");
         card.className = "suggestion-review";
+        const heading = document.createElement("div");
+        heading.className = "review-item-heading";
         const label = document.createElement("label");
+        const keepLabel = document.createElement("label");
+        keepLabel.className = "review-toggle";
+        const included = document.createElement("input");
+        included.type = "checkbox";
+        included.checked = item.included !== false;
+        included.addEventListener("change", reviewControls);
+        const keepText = document.createElement("span");
+        keepText.textContent = "保留此建议";
+        keepLabel.append(included, keepText);
         const input = document.createElement("textarea");
         input.id = `suggestion-draft-${index}`;
         input.value = item.text;
         input.maxLength = 2000;
         input.rows = 3;
-        input.required = true;
+        input.required = included.checked;
         input.addEventListener("input", reviewControls);
         label.htmlFor = input.id;
         label.textContent = `建议 ${index + 1}`;
+        heading.append(label, keepLabel);
+        const removed = document.createElement("p");
+        removed.className = "review-removed-note";
+        removed.textContent = "此建议将移出报告，原始反馈仍可在下方核对";
         const ids = document.createElement("p");
         ids.className = "suggestion-ids";
         ids.textContent = `反馈 ID：${item.feedback_ids.join("、")}`;
         const sources = sourceList(item.sources, `参考反馈（共 ${item.sources.length} 条）`);
-        card.append(label, input, ids, sources);
-        reviewFields.push({item, input});
+        card.append(heading, input, removed, ids, sources);
+        reviewFields.push({item, input, included, card, removed});
         return card;
     });
     $("#review-items").replaceChildren(...cards);
     $("#review-title").textContent = "核查玩家建议";
-    $("#review-description").textContent = "对照玩家原文与 AI 中文翻译，修改报告中的建议表述。反馈 ID 会保留。";
+    $("#review-description").textContent = "对照原文修改建议，取消“保留此建议”可将其移出报告，保存后生效。";
     $("#restore-suggestions").textContent = "恢复原始建议";
     $("#bug-review-summary").hidden = true;
     $("#review-editor").hidden = false;
@@ -363,7 +379,7 @@ function renderReview(detail) {
     editingReview = true;
     controls();
     reviewControls();
-    reviewFields[0]?.input.focus();
+    (reviewFields.find(field => field.included.checked)?.input || reviewFields[0]?.included)?.focus();
 }
 
 function renderBugReview(detail) {
@@ -372,7 +388,7 @@ function renderBugReview(detail) {
         const card = document.createElement("section");
         card.className = "suggestion-review bug-review";
         const heading = document.createElement("div");
-        heading.className = "bug-review-heading";
+        heading.className = "review-item-heading";
         const identity = document.createElement("div");
         const code = document.createElement("h3");
         code.textContent = item.code;
@@ -382,7 +398,7 @@ function renderBugReview(detail) {
         module.textContent = [item.label, categories].filter(Boolean).join(" · ");
         identity.append(code, module);
         const keepLabel = document.createElement("label");
-        keepLabel.className = "bug-toggle";
+        keepLabel.className = "review-toggle";
         const included = document.createElement("input");
         included.type = "checkbox";
         included.checked = item.included;
@@ -402,12 +418,12 @@ function renderBugReview(detail) {
         label.htmlFor = input.id;
         label.textContent = "问题描述";
         const removed = document.createElement("p");
-        removed.className = "bug-removed-note";
+        removed.className = "review-removed-note";
         removed.textContent = "此问题将移出报告，原始反馈仍可在下方核对。";
         const field = {item, input, included, sourceChecks: [], card, removed};
         function selectableSource(source) {
             const sourceLabel = document.createElement("label");
-            sourceLabel.className = "bug-toggle bug-source-toggle";
+            sourceLabel.className = "review-toggle bug-source-toggle";
             const checkbox = document.createElement("input");
             checkbox.type = "checkbox";
             checkbox.checked = item.feedback_ids.includes(source.feedback_id);
@@ -477,8 +493,8 @@ $("#restore-suggestions").addEventListener("click", () => {
     if (savingReview) return;
     for (const field of reviewFields) {
         field.input.value = field.item.original_text;
+        field.included.checked = true;
         if (reviewMode === "bugs") {
-            field.included.checked = true;
             for (const source of field.sourceChecks) source.input.checked = field.item.original_feedback_ids.includes(source.id);
         }
     }
@@ -500,7 +516,7 @@ $("#review-editor").addEventListener("submit", async event => {
         const bugs = reviewMode === "bugs";
         const version = (bugs ? bugReviewState : reviewState).version;
         const body = bugs ? {version, bugs: reviewFields.map(bugDraft)} :
-            {version, suggestions: reviewFields.map(({item, input}) => ({id: item.id, text: input.value}))};
+            {version, suggestions: reviewFields.map(({item, input, included}) => ({id: item.id, text: input.value, included: included.checked}))};
         const report = await post(`${target}/${bugs ? "bugs" : "review"}`, body);
         if (target !== jobUrl()) return;
         closeReview();

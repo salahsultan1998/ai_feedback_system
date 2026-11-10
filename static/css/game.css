@@ -106,15 +106,16 @@ tbody tr:hover td { background: #fafafa; }
 .review-sources summary:focus-visible { outline-offset: 3px; }
 .review-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 0; padding: 16px 0; border-top: 1px solid var(--border); background: #fff; }
 .review-actions > div { display: flex; gap: 8px; margin-left: auto; }
-.bug-review-heading { display: flex; align-items: flex-start; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; margin-bottom: 16px; }
-.bug-review-heading h3 { margin: 0 0 4px; font-size: 14px; }
+.review-item-heading { display: flex; align-items: flex-start; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; margin-bottom: 16px; }
+.review-item-heading > label { margin: 0; }
+.review-item-heading h3 { margin: 0 0 4px; font-size: 14px; }
 .bug-review-module { margin: 0; font-size: 12px; color: var(--text-secondary); }
-.suggestion-review label.bug-toggle { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; font-weight: 400; cursor: pointer; }
-.bug-toggle input { margin: 0; accent-color: var(--accent); }
+.suggestion-review label.review-toggle { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; font-weight: 400; cursor: pointer; }
+.review-toggle input { margin: 0; accent-color: var(--accent); }
 .suggestion-review label.bug-source-toggle { margin-bottom: 12px; font-size: 12px; }
-.bug-review.excluded { background: #fafafa; }
-.bug-review.excluded textarea { background: #f5f5f5; color: var(--text-secondary); }
-.bug-removed-note { margin: 12px 0 0; font-size: 12px; color: var(--text-secondary); }
+.suggestion-review.excluded { background: #fafafa; }
+.suggestion-review.excluded textarea { background: #f5f5f5; color: var(--text-secondary); }
+.review-removed-note { margin: 12px 0 0; font-size: 12px; color: var(--text-secondary); }
 #bug-review-summary { margin: 0 0 16px; color: var(--accent); }
 #download-md[aria-disabled=true] { opacity: .5; cursor: not-allowed; }
 .empty-state { padding: 48px 20px; text-align: center; }

@@ -1,13 +1,13 @@
 {
   "module_growth_thresholds": {
-    "账号问题": 0.3,
-    "游戏卡顿": 0.3,
+    "账号问题": 0.2,
+    "游戏卡顿": 0.2,
     "玩法相关": 0.3,
-    "充值": 0.3,
-    "作弊": 0.3,
+    "充值": 0.15,
+    "作弊": 0.2,
     "其他": 0.3
   },
-  "max_suggestions": 10,
+  "max_suggestions": 20,
   "max_issues_per_module": 3,
   "max_evidence_ids": 3,
   "ai_max_input_chars": 12000

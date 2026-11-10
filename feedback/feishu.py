@@ -72,6 +72,7 @@ def state(folder, config):
 
 def report_text(folder, detail_url=None):
     text = (folder / "report.md").read_text(encoding="utf-8")
+    text = re.sub(r"(?m)^<!-- suggestion-ids: (?:s\d+(?:,s\d+)*)? -->\n", "", text)
     # A relative link to a local workbook is unusable in a group message.
     replacement = f"[打开完整反馈明细]({detail_url})" if detail_url else "完整翻译明细 Excel 请在 app 中下载。"
     text, count = re.subn(r"\[[^\]]*\]\(feedback_details\.xlsx\)", lambda _: replacement, text)

@@ -223,6 +223,63 @@ class ReportReviewWebTests(BaseTest):
             model.assert_not_called()
         self.assertFalse(self.client.get(self.job + "/review").get_json()["editable"])
 
+    def test_delete_all_restore_and_push_preserve_sources_statistics_and_excel_without_ai(self):
+        original = self.client.get(self.job + "/review").get_json()
+        self.assertTrue(original["suggestions"])
+        response = self.client.get(self.job + "/download/markdown")
+        original_markdown = response.data.decode("utf-8")
+        response.close()
+        response = self.client.get(self.job + "/download/excel")
+        original_excel = response.data
+        response.close()
+
+        def save(included):
+            review = self.client.get(self.job + "/review").get_json()
+            payload = {"version": review["version"], "suggestions": [
+                {"id": item["id"], "text": item["original_text"], "included": included}
+                for item in review["suggestions"]]}
+            saved = self.client.post(self.job + "/review", json=payload, headers=self.headers)
+            self.assertEqual(saved.status_code, 200, saved.get_json())
+            return saved.get_json()
+
+        with patch("feedback.ai_client.request_json") as model:
+            saved = save(False)
+            self.assertTrue(saved["review"]["editable"])
+            self.assertTrue(saved["review"]["modified"])
+            self.assertIn("本期建议已全部移除。", saved["html"])
+            reopened = self.client.get(self.job + "/review").get_json()
+            self.assertTrue(all(not item["included"] for item in reopened["suggestions"]))
+            self.assertEqual([item["sources"] for item in reopened["suggestions"]],
+                             [item["sources"] for item in original["suggestions"]])
+            response = self.client.get(self.job + "/download/markdown")
+            removed_markdown = response.data.decode("utf-8")
+            response.close()
+            self.assertIn("<!-- suggestion-ids:  -->", removed_markdown)
+            self.assertIn("本期建议已全部移除。", removed_markdown)
+            self.assertEqual(report_review._parts(removed_markdown)[::2], report_review._parts(original_markdown)[::2])
+            response = self.client.get(self.job + "/download/excel")
+            self.assertEqual(response.data, original_excel)
+            response.close()
+            restored = save(True)
+            self.assertFalse(restored["review"]["modified"])
+            response = self.client.get(self.job + "/download/markdown")
+            self.assertEqual(response.data.decode("utf-8"), original_markdown)
+            response.close()
+            removed = save(False)
+            with patch("feedback.feishu.credentials", return_value=("https://example", "")), patch(
+                    "feedback.feishu_sheets.sync", return_value=None), patch(
+                    "feedback.feishu.send_payload", return_value={"code": 0}) as sender:
+                pushed = self.client.post(self.job + "/push/feishu", headers=self.headers,
+                    json={"report_version": removed["review"]["version"]})
+                self.assertEqual(pushed.status_code, 200, pushed.get_json())
+                sent = json.dumps([call.args[1] for call in sender.call_args_list], ensure_ascii=False)
+                self.assertIn("本期建议已全部移除。", sent)
+                self.assertNotIn("suggestion-ids", sent)
+                for item in original["suggestions"]:
+                    self.assertNotIn(item["text"], sent)
+            self.assertFalse(self.client.get(self.job + "/review").get_json()["editable"])
+            model.assert_not_called()
+
     def test_csrf_optimistic_version_and_push_lock(self):
         payload = self.edit_payload()
         self.assertEqual(self.client.post(self.job + "/review", json=payload).status_code, 403)

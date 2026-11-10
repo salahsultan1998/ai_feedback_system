@@ -14,6 +14,7 @@ from .storage import atomic_json
 
 
 UNAVAILABLE_REASON = "此报告尚未保存建议原文，请重新生成报告后编辑。"
+REMOVED_TEXT = "本期建议已全部移除。"
 
 
 def _parts(text):
@@ -25,21 +26,36 @@ def _parts(text):
     return text[:start.end()], text[start.end():end_offset], text[end_offset:]
 
 
-def _texts(text, suggestions):
+def _active(text, suggestions):
     _, body, _ = _parts(text)
-    if not suggestions:
-        return []
     lines = body.strip().splitlines()
-    if len(lines) != len(suggestions):
+    by_id = {item["id"]: item for item in suggestions}
+    ids = list(by_id)
+    manifest = re.fullmatch(r"<!-- suggestion-ids: (.*?) -->", lines[0]) if lines else None
+    if manifest:
+        ids = manifest[1].split(",") if manifest[1] else []
+        if ids != [item["id"] for item in suggestions if item["id"] in ids]:
+            raise ValueError("报告建议编号已变化，请重新打开编辑界面。")
+        if len(lines) < 2 or lines[1] != "":
+            raise ValueError("报告建议区格式已变化，无法安全修改。请重新生成报告。")
+        lines = lines[2:]
+        if not ids:
+            if lines != [REMOVED_TEXT]:
+                raise ValueError("报告建议区格式已变化，无法安全修改。请重新生成报告。")
+            return {}
+    elif not suggestions:
+        return {}
+    if len(lines) != len(ids):
         raise ValueError("报告建议数量已变化，无法安全修改。请重新生成报告。")
-    texts = []
-    for index, (line, item) in enumerate(zip(lines, suggestions), 1):
+    active = {}
+    for index, (line, sid) in enumerate(zip(lines, ids), 1):
+        item = by_id[sid]
         prefix = f"{index}. "
         suffix = f"（反馈 ID：{safe('、'.join(item['feedback_ids']))}）"
         if not line.startswith(prefix) or not line.endswith(suffix):
             raise ValueError("报告建议引用已变化，无法安全修改。请重新生成报告。")
-        texts.append(html.unescape(line[len(prefix):-len(suffix)]))
-    return texts
+        active[sid] = html.unescape(line[len(prefix):-len(suffix)])
+    return active
 
 
 def initialize(folder, snapshot, analysis, markdown):
@@ -55,7 +71,7 @@ def initialize(folder, snapshot, analysis, markdown):
         if not ids or any(not isinstance(fid, str) or fid not in rows for fid in ids):
             raise ValueError("建议引用了不属于本期有效反馈的记录。")
         suggestions.append({"id": f"s{index}", "text": plain_text(item["text"]), "feedback_ids": ids})
-    if _texts(markdown, suggestions) != [item["text"] for item in suggestions]:
+    if _active(markdown, suggestions) != {item["id"]: item["text"] for item in suggestions}:
         raise ValueError("报告建议与原文快照不一致，无法保存人工核查资料。")
     data = {"schema_version": 1, "suggestions": suggestions}
     if "bugs" in analysis:
@@ -151,15 +167,16 @@ def _read(folder, text=None, include_sources=True):
             base["suggestions"] = []
         return base
     suggestions = data["suggestions"]
-    texts = _texts(text, suggestions)
+    active = _active(text, suggestions)
     reason = lock_reason(folder) or ("本期没有可编辑的建议。" if not suggestions else "")
     base.update(editable=not reason, locked_reason=reason,
-                modified=texts != [item["text"] for item in suggestions])
+                modified=active != {item["id"]: item["text"] for item in suggestions})
     if include_sources:
-        base["suggestions"] = [{"id": item["id"], "text": text_value, "original_text": item["text"],
+        base["suggestions"] = [{"id": item["id"], "text": active.get(item["id"], item["text"]),
+                                "original_text": item["text"], "included": item["id"] in active,
                                 "feedback_ids": list(item["feedback_ids"]),
                                 "sources": [dict(data["sources"][fid]) for fid in item["feedback_ids"]]}
-                               for item, text_value in zip(suggestions, texts)]
+                               for item in suggestions]
     return base
 
 
@@ -172,7 +189,7 @@ def summary(folder, text=None):
 
 
 def save(folder, version, texts):
-    """Change only suggestion wording; IDs, evidence and other report sections stay fixed."""
+    """Review wording and inclusion; IDs, evidence and other report sections stay fixed."""
     folder = Path(folder)
     current = (folder / "report.md").read_text(encoding="utf-8")
     state = _read(folder, text=current)
@@ -183,21 +200,27 @@ def save(folder, version, texts):
     data = load_snapshot(folder)
     suggestions = data["suggestions"]
     if not isinstance(texts, list) or len(texts) != len(suggestions):
-        raise ValueError("只能修改现有建议文案，不能新增或删除建议。")
-    values = []
+        raise ValueError("只能核查现有建议，请保留所有编号并使用保留选项移除建议。")
+    values = {}
     for item, original in zip(texts, suggestions):
-        if not isinstance(item, dict) or set(item) != {"id", "text"} or item["id"] != original["id"]:
+        if (not isinstance(item, dict) or set(item) not in ({"id", "text"}, {"id", "text", "included"}) or
+                item["id"] != original["id"] or type(item.get("included", True)) is not bool):
             raise ValueError("建议编号或引用不可修改，请重新打开编辑界面。")
+        included = item.get("included", True)
         value = item["text"]
-        if not isinstance(value, str) or not value.strip() or len(value) > MAX_TEXT_CHARS:
+        if not isinstance(value, str) or included and (not value.strip() or len(value) > MAX_TEXT_CHARS):
             raise ValueError(f"每条建议须填写 1–{MAX_TEXT_CHARS} 个字符。")
-        if any(ord(char) < 32 and char not in "\r\n\t" for char in value):
+        if included and any(ord(char) < 32 and char not in "\r\n\t" for char in value):
             raise ValueError("建议文案含不可显示的控制字符，请删除后再保存。")
-        values.append(plain_text(value.strip()))
-    if values != [item["text"] for item in state["suggestions"]]:
+        if included:
+            values[original["id"]] = plain_text(value.strip())
+    if values != {item["id"]: item["text"] for item in state["suggestions"] if item["included"]}:
         prefix, _, suffix = _parts(current)
-        lines = [f"{index}. {safe(value)}（反馈 ID：{safe('、'.join(item['feedback_ids']))}）"
-                 for index, (item, value) in enumerate(zip(suggestions, values), 1)]
+        kept = [item for item in suggestions if item["id"] in values]
+        lines = [f"{index}. {safe(values[item['id']])}（反馈 ID：{safe('、'.join(item['feedback_ids']))}）"
+                 for index, item in enumerate(kept, 1)]
+        if len(kept) != len(suggestions):
+            lines = [f"<!-- suggestion-ids: {','.join(values)} -->", "", *(lines or [REMOVED_TEXT])]
         updated = validate_report_language(prefix + "\n" + "\n".join(lines) + "\n\n" + suffix)
         temporary = folder / "report.review.tmp.md"
         temporary.write_text(updated, encoding="utf-8")

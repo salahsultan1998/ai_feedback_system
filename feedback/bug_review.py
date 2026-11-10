@@ -8,9 +8,9 @@ from .review_state import (MAX_TEXT_CHARS, ReviewConflict, load_snapshot, lock_r
                            plain_text, report_version)
 
 
-HEADING = "## 疑似 BUG 反馈"
-EMPTY_TEXT = "本期无疑似 BUG反馈。"
-UNAVAILABLE_REASON = "此报告尚未生成疑似 BUG 清单，请重新生成报告。"
+HEADING = "## BUG 反馈"
+EMPTY_TEXT = "本期无 BUG反馈。"
+UNAVAILABLE_REASON = "此报告尚未生成BUG 清单，请重新生成报告。"
 
 
 def _categories(value):
@@ -63,26 +63,26 @@ def _active(section, originals):
     if lines == [HEADING, EMPTY_TEXT]:
         return {}
     if len(lines) < 3 or lines[0] != HEADING:
-        raise ValueError("疑似 BUG 清单结构已变化，请重新生成报告后编辑。")
+        raise ValueError(" BUG 清单结构已变化，请重新生成报告后编辑。")
     active = {}
     for index, line in enumerate(lines[2:], 1):
         match = re.match(r"\d+\. \*\*【(BUG-\d+) · ", line)
         code = match[1] if match else None
         if code not in by_code or code in active:
-            raise ValueError("疑似 BUG 编号已变化，请重新打开核查界面。")
+            raise ValueError(" BUG 编号已变化，请重新打开核查界面。")
         original = by_code[code]
         categories = "、".join(original["categories"]) or "未细分"
         prefix = f"{index}. **【{safe(code)} · {safe(original['label'])} · {safe(categories)}】** "
         match = re.fullmatch(r"(.*)（相关反馈：([1-9]\d*) 条；反馈 ID：(.+)）", line[len(prefix):]) if line.startswith(prefix) else None
         if not match:
-            raise ValueError("疑似 BUG 内容或引用结构已变化，请重新生成报告。")
+            raise ValueError("BUG 内容或引用结构已变化，请重新生成报告。")
         ids = html.unescape(match[3]).split("、")
         if (len(ids) != int(match[2]) or len(ids) != len(set(ids)) or
                 any(fid not in original["feedback_ids"] for fid in ids)):
-            raise ValueError("疑似 BUG 引用了不属于该问题的反馈。")
+            raise ValueError("BUG 引用了不属于该问题的反馈。")
         active[code] = {**original, "text": html.unescape(match[1]), "feedback_ids": ids}
     if section.strip() != render_section(list(active.values())).strip():
-        raise ValueError("疑似 BUG 清单格式或汇总数量已变化，请重新生成报告。")
+        raise ValueError("BUG 清单格式或汇总数量已变化，请重新生成报告。")
     return active
 
 
@@ -100,7 +100,7 @@ def _read(folder, text=None, include_sources=True):
         return result
     originals = data["bugs"]
     active = _active(parts[1], originals)
-    reason = lock_reason(folder) or ("本期没有可核查的疑似 BUG。" if not originals else "")
+    reason = lock_reason(folder) or ("本期没有可核查的 BUG。" if not originals else "")
     result.update(editable=not reason, locked_reason=reason,
                   modified=list(active) != [item["code"] for item in originals] or any(
                       active[item["code"]]["text"] != item["text"] or
@@ -135,7 +135,7 @@ def save(folder, version, bugs):
         raise ReviewConflict("报告已更新，请重新打开 BUG 核查界面后再保存。")
     originals = load_snapshot(folder)["bugs"]
     if not isinstance(bugs, list) or len(bugs) != len(originals):
-        raise ValueError("只能核查现有疑似 BUG，不能新增、删除或更换问题编号。")
+        raise ValueError("只能核查现有 BUG，不能新增、删除或更换问题编号。")
     included = []
     for item, original in zip(bugs, originals):
         if (not isinstance(item, dict) or set(item) != {"id", "text", "included", "feedback_ids"} or

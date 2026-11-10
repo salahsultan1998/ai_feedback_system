@@ -57,6 +57,19 @@ class FeishuTests(TestCase):
                 push(self.folder, self.config)
         self.assertEqual(state(self.folder, self.config)["status"], "failed")
 
+    def test_suggestion_selection_metadata_is_not_sent_in_cards(self):
+        for ids, body in (("s0,s2", "1. 保留第一条建议\n2. 保留第三条建议"),
+                          ("", "本期建议已全部移除。")):
+            with self.subTest(ids=ids):
+                markdown = f"# 测试报告\n\n## 有价值的玩家建议\n\n<!-- suggestion-ids: {ids} -->\n\n{body}\n\n## 反馈统计\n"
+                (self.folder / "report.md").write_text(markdown, encoding="utf-8")
+                rendered = report_text(self.folder)
+                payload = json.dumps(card_payload("测试报告", rendered), ensure_ascii=False)
+                self.assertNotIn("suggestion-ids", payload)
+                self.assertIn(body, rendered)
+                self.assertIn("## 反馈统计", rendered)
+                self.assertEqual((self.folder / "report.md").read_text(encoding="utf-8"), markdown)
+
     def test_rejection_preserves_actual_service_message_without_webhook(self):
         def reject(url, payload):
             return {"code": 10002, "msg": f"unsupported tag md {url} {payload['sign']} https://example.com/private\n\t detail"}

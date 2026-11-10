@@ -67,6 +67,16 @@ class ModelErrorTests(TestCase):
         self.assertEqual(self.call_model([self.status_error(429, {"message": "Too many requests"}), response]), {"ok": True})
         self.assertEqual(self.calls, 2)
 
+    def test_disables_reasoning_for_every_model_request(self):
+        response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps({"ok": True})))])
+        client = MagicMock()
+        client.chat.completions.create.return_value = response
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-only"}), patch(
+                "feedback.ai_client.OpenAI") as factory:
+            factory.return_value.__enter__.return_value = client
+            self.assertEqual(request_json("prompt", {}, self.config, lambda value: value), {"ok": True})
+        self.assertEqual(client.chat.completions.create.call_args.kwargs["extra_body"], {"reasoning": {"enabled": False}})
+
     def test_exhausted_server_error_keeps_status_and_reason(self):
         error = self.status_error(503, {"message": "No providers available"})
         with self.assertRaisesRegex(ModelRequestError, "HTTP 503.*No providers available"):

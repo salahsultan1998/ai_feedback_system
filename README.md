@@ -52,7 +52,7 @@ Game categories, terminology and extraction rules live in `config/<game>/labels.
 
 ## Review before pushing
 
-**编辑建议** changes suggestion wording while keeping its evidence fixed. **审核 BUG** also lets you exclude an issue or remove an incorrectly attributed source. Saving BUG edits recalculates that section's issue and distinct-feedback counts. Neither editor changes module statistics or the Excel export, and neither calls AI.
+**编辑建议** changes suggestion wording while keeping its evidence fixed. Uncheck **保留此建议** to remove a suggestion from the report, then save; retained suggestions are numbered consecutively. Removed suggestions and their sources remain in the editor for restoration, including when every suggestion has been removed. **审核 BUG** also lets you exclude an issue or remove an incorrectly attributed source. Saving BUG edits recalculates that section's issue and distinct-feedback counts. Neither editor changes module statistics or the Excel export, and neither calls AI.
 
 Each description is limited to 2,000 characters and must follow the Chinese report rules. **保存修改** updates the saved Markdown used by preview, download and Feishu. **取消** discards drafts; **恢复原始建议 / 恢复原始 BUG** restores the original into the draft and requires Save to apply. Removed BUG candidates remain recoverable with their stable codes and original sources.
 
@@ -173,6 +173,7 @@ Uploads and report runs are isolated. Record results are reused within an upload
 .venv/bin/python -B -m unittest discover -s tests -v
 node tests/test_game_ui.cjs
 node tests/test_navigation_recovery.cjs
+node tests/test_suggestion_removal.cjs
 ```
 
 Node is needed only for the JavaScript interaction checks. Tests use temporary files and simulated AI/Feishu responses; they make no paid model calls or real pushes.

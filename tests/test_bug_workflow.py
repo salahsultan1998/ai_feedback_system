@@ -43,7 +43,7 @@ class BugWorkflowTests(BaseTest):
         self.assertIn(bug_review.HEADING, new_md)
         self.assertIn('1 个疑似问题，涉及 2 条反馈', new_md)
         self.assertIn('004、005', new_md)
-        self.assertNotIn('002', new_md.split('## 疑似 BUG')[1].split('## 反馈统计')[0])
+        self.assertNotIn('002', new_md.split(bug_review.HEADING)[1].split('## 反馈统计')[0])
         snapshot = json.loads((self.root / 'reports/after/review.json').read_text())
         self.assertEqual(set(snapshot['sources']), {'004', '005'})
         self.assertEqual(fingerprint(self.raw.iloc[4], before_config), fingerprint(self.raw.iloc[4], self.config))

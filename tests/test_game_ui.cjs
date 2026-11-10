@@ -34,9 +34,9 @@ function boot(options = {}) {
     const calls = [];
     const requests = [], windowListeners = {};
     const server = {pushStatus: options.pushStatus || "unknown", version: "revision-1", html: "<h1>Report</h1>",
-        suggestions: [{id:"s0", text:"增加相册入口", original_text:"增加相册入口", feedback_ids:["0001", "0002"],
+        suggestions: JSON.parse(JSON.stringify(options.suggestions || [{id:"s0", text:"增加相册入口", original_text:"增加相册入口", included:true, feedback_ids:["0001", "0002"],
             sources:[{feedback_id:"0001",original_text:"أريد إضافة ألبوم الصور",translation_zh:"希望添加相册。"},
-                {feedback_id:"0002",original_text:"<script>unsafe()</script>",translation_zh:"希望增加相册入口。"}]}],
+                {feedback_id:"0002",original_text:"<script>unsafe()</script>",translation_zh:"希望增加相册入口。"}]}])),
         bugs: options.bugs || [{id:"b0",code:"BUG-001",label:"账号问题",categories:"无法登录",text:"玩家反映无法登录。",original_text:"玩家反映无法登录。",included:true,
             feedback_ids:["0001","0002"],original_feedback_ids:["0001","0002"],
             sources:[{feedback_id:"0001",original_text:"لا أستطيع الدخول",translation_zh:"无法进入游戏。"},
@@ -47,7 +47,7 @@ function boot(options = {}) {
                 {feedback_id:"0003",original_text:"活动打不开",translation_zh:"活动打不开。"}]}]};
     function review() {
         return {available:true, editable:server.pushStatus === "ready", locked_reason:server.pushStatus === "ready" ? "" : "此报告已开始推送，建议内容已锁定。",
-            version:server.version, modified:server.suggestions.some(item=>item.text!==item.original_text)};
+            version:server.version, modified:server.suggestions.some(item=>item.text!==item.original_text || !item.included)};
     }
     function bugReview() {
         const available = options.bugAvailable !== false;
@@ -58,6 +58,15 @@ function boot(options = {}) {
     function reportResponse() {
         return {html:server.html, feishu:{available:true,status:server.pushStatus,sent_at:"2026-10-26T00:00:00+00:00"}, review:review(), bug_review:bugReview()};
     }
+    function reportHtml() {
+        const suggestions = server.suggestions.filter(item=>item.included);
+        const suggestionHtml = suggestions.length ? suggestions.map((item, index)=>`<p>${index + 1}. ${item.text}</p>`).join("") :
+            `<p>${server.suggestions.length ? "本期建议已全部移除。" : "本期未发现明确、具体的产品改进建议。"}</p>`;
+        const bugs = server.bugs.filter(item=>item.included);
+        const count = new Set(bugs.flatMap(item=>item.feedback_ids)).size;
+        return `<h1>Report</h1>${suggestionHtml}<p>BUG 问题数：${bugs.length}；涉及反馈：${count}</p>` + bugs.map(item=>`<p>${item.code} ${item.text}</p>`).join("");
+    }
+    server.html = reportHtml();
     let currentUrl = options.url || `http://localhost/games/${game}?upload=old-upload`;
     const location = {
         get href() { return currentUrl; },
@@ -107,10 +116,15 @@ function boot(options = {}) {
                 if (options.method === "POST") {
                     const body = JSON.parse(options.body);
                     assert.equal(body.version, server.version);
-                    assert.deepEqual(Object.keys(body.suggestions[0]).sort(), ["id", "text"]);
-                    for (const item of body.suggestions) server.suggestions.find(s=>s.id===item.id).text = item.text;
+                    assert.equal(body.suggestions.length, server.suggestions.length);
+                    for (const [index, item] of body.suggestions.entries()) {
+                        assert.deepEqual(Object.keys(item).sort(), ["id", "included", "text"]);
+                        assert.equal(item.id, server.suggestions[index].id);
+                        assert.equal(typeof item.included, "boolean");
+                        Object.assign(server.suggestions[index], item);
+                    }
                     server.version = `revision-${Number(server.version.split("-")[1]) + 1}`;
-                    server.html = `<h1>Report</h1><p>${server.suggestions[0].text}</p>`;
+                    server.html = reportHtml();
                     data = reportResponse();
                 } else data = {...review(), suggestions:JSON.parse(JSON.stringify(server.suggestions))};
             }
@@ -121,9 +135,7 @@ function boot(options = {}) {
                     assert.deepEqual(Object.keys(body.bugs[0]).sort(), ["feedback_ids","id","included","text"]);
                     for (const item of body.bugs) Object.assign(server.bugs.find(bug=>bug.id===item.id), item);
                     server.version = `revision-${Number(server.version.split("-")[1]) + 1}`;
-                    const kept = server.bugs.filter(item=>item.included);
-                    const count = new Set(kept.flatMap(item=>item.feedback_ids)).size;
-                    server.html = `<h1>Report</h1><p>${server.suggestions[0].text}</p><p>BUG 问题数：${kept.length}；涉及反馈：${count}</p>` + kept.map(item=>`<p>${item.code} ${item.text}</p>`).join("");
+                    server.html = reportHtml();
                     data = reportResponse();
                 } else data = {...bugReview(), bugs:JSON.parse(JSON.stringify(server.bugs))};
             }
