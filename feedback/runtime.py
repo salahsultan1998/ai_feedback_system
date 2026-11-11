@@ -34,8 +34,6 @@ def configure_runtime(app):
             raise RuntimeError("Production requires an absolute FEEDBACK_STORAGE directory.")
         if not hosts or not hosts.strip():
             raise RuntimeError("Production requires FEEDBACK_ALLOWED_HOSTS.")
-        if not secure:
-            raise RuntimeError("Production requires FEEDBACK_SECURE_COOKIES=true and HTTPS.")
     if secret:
         app.config["SECRET_KEY"] = secret
     if hosts is not None:

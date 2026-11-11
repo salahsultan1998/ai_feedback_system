@@ -47,7 +47,7 @@ class DeploymentTests(TestCase):
             ("FEEDBACK_ALLOWED_HOSTS", ""),
             ("FEEDBACK_ALLOWED_HOSTS", "*"),
             ("FEEDBACK_ALLOWED_HOSTS", "https://feedback.example.test/path"),
-            ("FEEDBACK_SECURE_COOKIES", "false"),
+            ("FEEDBACK_SECURE_COOKIES", "invalid"),
             ("FEEDBACK_BEHIND_PROXY", "invalid"),
         ):
             with self.subTest(key=key, value=value), patch.dict(os.environ, {key: value}):
@@ -78,6 +78,16 @@ class DeploymentTests(TestCase):
         self.assertNotIn("Set-Cookie", response.headers)
         model.assert_not_called()
         self.assertEqual(self.storage.stat().st_mode & 0o777, 0o700)
+
+    def test_explicit_http_mode_issues_a_cookie_for_a_trusted_ip(self):
+        with patch.dict(os.environ, {"FEEDBACK_SECURE_COOKIES": "false",
+                                     "FEEDBACK_ALLOWED_HOSTS": "192.0.2.10"}):
+            app = self.app()
+        response = app.test_client().get("/games/baloot", base_url="http://192.0.2.10:8088")
+        self.assertEqual(response.status_code, 200)
+        cookie = SimpleCookie(response.headers["Set-Cookie"])["feedback_session"]
+        self.assertFalse(cookie["secure"])
+        self.assertTrue(cookie["httponly"])
 
     def test_fresh_api_clients_cannot_bypass_csrf_with_placeholder_tokens(self):
         app = self.app()

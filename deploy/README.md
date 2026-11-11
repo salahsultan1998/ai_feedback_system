@@ -39,7 +39,7 @@ Paste the generated value into `FLASK_SECRET_KEY`, set `OPENROUTER_API_KEY`, and
 | `FEEDBACK_PROMPT_PASSWORD_BALOOT`, `FEEDBACK_PROMPT_PASSWORD_XINJIANG` | Optional, separate random passwords for editing each game's prompts |
 | `FLASK_SECRET_KEY` | Random secret, at least 32 characters |
 | `FEEDBACK_ALLOWED_HOSTS` | Your hostname, for example `feedback.example.com` |
-| `FEEDBACK_SECURE_COOKIES` | `true` for HTTPS-only browser cookies |
+| `FEEDBACK_SECURE_COOKIES` | Defaults to `true` in production. Set `false` only for an intentional HTTP deployment on a trusted network |
 | `FEEDBACK_BEHIND_PROXY` | `true` for the single Nginx proxy in this example |
 
 systemd loads this file into the service environment. Avoid keeping a second production `.env` in the code directory. The app also supports the project `.env` for local development; environment variables take precedence. Never put credentials or uploaded reports in Git or an Nginx static directory. If reusing an existing storage directory, assign it to `ai-feedback` and set its permissions to `0700`; production startup refuses a group/world-accessible storage root.
@@ -73,6 +73,8 @@ sudo systemctl reload nginx
 Add this as a separate site alongside your other app. Gunicorn remains bound to loopback; expose only the HTTPS proxy to your authorized network. The supplied proxy overwrites the forwarded client IP and scheme headers, matching the app's trust of exactly one proxy. If your server has additional proxy layers, adapt both configurations before using them.
 
 Open `https://feedback.example.com`, upload `examples/feedback_sample.csv`, and check preview and date selection. These operations do not use the LLM. Refresh and verify a blank workspace and deletion of the previous upload folder. A generated sample report makes paid model calls; sending it to Feishu is a separate manual action. Verify HTTPS cookies and downloads before inviting colleagues.
+
+For an IP-and-port HTTP deployment on a trusted network, use `deploy/nginx-ip.conf` instead. Replace `SERVER_IP` with the server's IP and `CLIENT_IP` with an allowed client IP or network. Add the server's IP to `FEEDBACK_ALLOWED_HOSTS`, keep `FEEDBACK_BEHIND_PROXY=true`, and set `FEEDBACK_SECURE_COOKIES=false`. Gunicorn stays on `127.0.0.1:5050`. Check that port `8088` is free before enabling the Nginx site, restrict access to the same network in your firewall, and use `nginx -t` before reloading Nginx. HTTP does not encrypt browser traffic, so use HTTPS for feedback or passwords sent over the public internet.
 
 ## Updating and recovery
 
