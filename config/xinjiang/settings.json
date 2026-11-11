@@ -34,14 +34,14 @@
   "classification_batch_max_chars": 16000,
   "timeout_seconds": 120,
   "feishu": {
-    "enabled": false,
+    "enabled": true,
     "webhook_env": "FEISHU_XINJIANG_WEBHOOK",
     "spreadsheet": {
-      "enabled": false,
-      "url": "",
+      "enabled": true,
+      "url": "https://aozalj10qx.feishu.cn/wiki/Nc69w7gDQi3FUgktBAScxS0PnEg",
       "spreadsheet_token": "",
-      "app_id_env": "FEISHU_APP_ID",
-      "app_secret_env": "FEISHU_APP_SECRET",
+      "app_id_env": "FEISHU_APP_ID_XINJIANG",
+      "app_secret_env": "FEISHU_APP_SECRET_XINJIANG",
       "batch_rows": 500
     }
   }

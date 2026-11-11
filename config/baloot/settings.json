@@ -28,8 +28,8 @@
       "enabled": true,
       "url": "https://aozalj10qx.feishu.cn/wiki/HmaVwb2wAixEsbka6rDcACGznob",
       "spreadsheet_token": "DsgwsQUGvhqwXpthokEcy3i5nPh",
-      "app_id_env": "FEISHU_APP_ID",
-      "app_secret_env": "FEISHU_APP_SECRET",
+      "app_id_env": "FEISHU_APP_ID_BALOOT",
+      "app_secret_env": "FEISHU_APP_SECRET_BALOOT",
       "batch_rows": 500
     }
   }

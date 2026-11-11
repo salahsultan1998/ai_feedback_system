@@ -106,7 +106,7 @@ class XinjiangTests(unittest.TestCase):
         self.assertTrue(validate_result(answer, baloot, '建议')['is_suggestion'])
         self.assertNotIn('is_bug', validate_result(answer, baloot))
 
-    def test_game_page_upload_and_feishu_disabled(self):
+    def test_game_page_upload_and_feishu_spreadsheet_enabled(self):
         app = create_app({'TESTING': True, 'STORAGE_ROOT': self.root / 'web'})
         client = app.test_client()
         page = client.get('/games/xinjiang')
@@ -119,4 +119,4 @@ class XinjiangTests(unittest.TestCase):
             data={'file': (BytesIO(self.source().to_csv(index=False).encode()), 'xinjiang.csv')})
         self.assertEqual(result.status_code, 201, result.get_json())
         self.assertEqual(result.get_json()['valid'], 8)
-        self.assertFalse(self.config['feishu']['enabled'])
+        self.assertTrue(self.config['feishu']['spreadsheet']['enabled'])
