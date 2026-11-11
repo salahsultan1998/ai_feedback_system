@@ -1,18 +1,20 @@
-"""Read-only configuration; uploads and report creation are explicit actions."""
+"""Workspace, prompt editing and report endpoints."""
 from datetime import timedelta
 import os
 from pathlib import Path
+from secrets import compare_digest
 
 from flask import Blueprint, current_app, g, jsonify, request, send_file, session, url_for
 import markdown
 from werkzeug.exceptions import HTTPException
 
-from feedback.config import load_config
+from feedback.config import get_game, load_config, read_prompt_templates, validate_prompt_template
 from feedback.importer import read_feedback
 from feedback.cleaning import clean_feedback, parse_dates
 from feedback.storage import atomic_csv, atomic_json, read_csv
 from feedback.workflow import prepare_selection
 from feedback.jobs import BusyError
+from feedback.prompt_store import PromptConflict
 from feedback import bug_review, feishu, report_review
 
 api = Blueprint("api", __name__, url_prefix="/api")
@@ -22,8 +24,9 @@ def services():
     return current_app.extensions["storage"], current_app.extensions["jobs"]
 
 
-def config_for(game):
-    return load_config(game, current_app.config["PROJECT_ROOT"])
+def config_for(game, use_saved_prompts=False):
+    prompts = current_app.extensions["prompts"].overrides(game) if use_saved_prompts else None
+    return load_config(game, current_app.config["PROJECT_ROOT"], prompts)
 
 
 @api.before_request
@@ -63,7 +66,7 @@ def invalid(error):
     response = {"error": str(error)}
     if isinstance(error, BusyError) and error.active_job is not None:
         response["busy"] = True
-    return jsonify(response), 409 if isinstance(error, (BusyError, report_review.ReviewConflict)) else 400
+    return jsonify(response), 409 if isinstance(error, (BusyError, PromptConflict, report_review.ReviewConflict)) else 400
 
 
 @api.errorhandler(Exception)
@@ -72,6 +75,32 @@ def unexpected(error):
         return jsonify(error=error.description), error.code
     current_app.logger.exception("API request failed")
     return jsonify(error="无法完成请求，请检查文件格式或服务日志。"), 500
+
+
+@api.route("/games/<game>/prompts", methods=["GET", "POST"])
+def prompts(game):
+    root = current_app.config["PROJECT_ROOT"]
+    if not get_game(game, root)["enabled"]:
+        raise ValueError("此游戏尚未启用。")
+    defaults = read_prompt_templates(Path(root) / "config" / game)
+    store = current_app.extensions["prompts"]
+    password = os.getenv(f"FEEDBACK_PROMPT_PASSWORD_{game.upper().replace('-', '_')}", "")
+    if request.method == "GET":
+        return jsonify(editable=bool(password), prompts=store.read(game, defaults))
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        raise ValueError("请求格式无效。")
+    supplied = data.get("password")
+    if not password or not isinstance(supplied, str) or not compare_digest(supplied.encode(), password.encode()):
+        return jsonify(error="该游戏的编辑密码不正确或尚未设置。"), 403
+    name, body, revision = data.get("name"), data.get("text"), data.get("revision")
+    if not isinstance(name, str) or name not in defaults:
+        raise ValueError("提示词类型无效。")
+    if not isinstance(body, str) or not body.strip() or len(body) > 20000 or "\0" in body:
+        raise ValueError("提示词须为 1 至 20,000 字的有效文本。")
+    validate_prompt_template(name, body)
+    return jsonify(store.save(game, name, defaults[name], revision, body))
 
 
 @api.post("/games/<game>/uploads")
@@ -100,8 +129,8 @@ def upload(game):
     return jsonify(meta), 201
 
 
-def load_run(game, run):
-    config = config_for(game)
+def load_run(game, run, use_saved_prompts=False):
+    config = config_for(game, use_saved_prompts)
     storage, jobs = services()
     meta = storage.metadata(game, run)
     if meta["column_mapping"] != config["column_mapping"]:
@@ -145,7 +174,7 @@ def selection(game, run):
 
 @api.post("/games/<game>/uploads/<run>/reports")
 def report(game, run):
-    folder, config, _ = load_run(game, run)
+    folder, config, _ = load_run(game, run, use_saved_prompts=True)
     selected = options()
     _, info = prepare_selection(folder, config, **selected)
     if not info["ready"]:

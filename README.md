@@ -68,7 +68,11 @@ New reports preserve immutable originals in `report.original.md` and evidence in
 
 ## Configuration
 
-Configuration is repository-managed; the app has no settings editor or configuration-write API. Global settings are overridden by `config/<game>/settings.json`; `OPENROUTER_MODEL` overrides the configured model.
+Global settings are overridden by `config/<game>/settings.json`. `OPENROUTER_MODEL` overrides the configured model. Game owners can edit prompt text from the game's **配置** tab.
+
+1. Set `FEEDBACK_PROMPT_PASSWORD_BALOOT` and `FEEDBACK_PROMPT_PASSWORD_XINJIANG` in the local `.env` or the server environment file. Generate a different value for each game with `python3 -c 'import secrets; print(secrets.token_urlsafe(24))'` and restart the app. A game without a password shows its prompts read-only.
+2. Open the game, select **配置**, choose a prompt, and save it with the game's password. **恢复上一版** loads the prior text for review. Save to make it active.
+3. The app creates `prompts.sqlite3` automatically under `FEEDBACK_STORAGE` (`storage/` locally by default). Keep this file when updating the code. Saved text takes precedence over the repository default, and each report uses the prompt text loaded when the job starts.
 
 | File | Controls |
 | --- | --- |

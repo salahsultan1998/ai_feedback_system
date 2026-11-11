@@ -53,13 +53,14 @@
         </div>
     </section>
 
-    <section id="content-section" class="panel content-panel" hidden>
+    <section class="panel content-panel">
         <div class="content-toolbar">
-            <div class="tabs" role="tablist" aria-label="反馈与报告">
+            <div class="tabs" role="tablist" aria-label="游戏工作区">
+                <button id="config-tab" type="button" class="tab" role="tab" aria-selected="false" aria-controls="config-section" tabindex="-1">配置</button>
                 <button id="data-tab" type="button" class="tab active" role="tab" aria-selected="true" aria-controls="data-section">数据预览</button>
                 <button id="report-tab" type="button" class="tab" role="tab" aria-selected="false" aria-controls="result-section" tabindex="-1">报告</button>
             </div>
-            <span id="date-span" class="muted toolbar-meta"></span>
+            <span id="date-span" class="muted toolbar-meta" hidden></span>
             <div id="downloads" class="downloads" hidden>
                 <button id="edit-suggestions" type="button" class="secondary compact" disabled>编辑建议</button>
                 <button id="edit-bugs" type="button" class="secondary compact" disabled>审核 BUG</button>
@@ -68,9 +69,31 @@
                 <a id="download-excel" class="button secondary compact" href="#">完整翻译 Excel ↓</a>
             </div>
         </div>
+        <div id="config-section" class="prompt-panel" role="tabpanel" aria-labelledby="config-tab" hidden>
+            <form id="prompt-form" method="post" hidden>
+                <div class="prompt-heading">
+                    <label for="prompt-kind">提示词</label>
+                    <select id="prompt-kind" class="prompt-input"></select>
+                    <span id="prompt-version" class="muted small"></span>
+                </div>
+                <textarea id="prompt-text" class="prompt-input" aria-label="提示词正文" aria-describedby="prompt-hint" spellcheck="false" maxlength="20000" rows="13"></textarea>
+                <p id="prompt-hint" class="muted small prompt-hint"></p>
+                <div id="prompt-actions" class="prompt-actions" hidden>
+                    <button id="prompt-previous" class="secondary compact" type="button" hidden>恢复上一版</button>
+                    <label for="prompt-password">编辑密码</label>
+                    <input id="prompt-password" class="prompt-input" type="password" autocomplete="current-password" required>
+                    <button id="prompt-save" type="submit" disabled>保存提示词</button>
+                </div>
+            </form>
+            <p id="prompt-status" class="muted small" role="status" aria-live="polite"></p>
+            <button id="prompt-reload" class="secondary compact" type="button" hidden>重新读取</button>
+        </div>
         <div id="data-section" role="tabpanel" aria-labelledby="data-tab">
-            <div class="table-scroll" tabindex="0" role="region" aria-label="上传反馈数据，可横向和纵向滚动"><table id="data-table"><thead></thead><tbody></tbody></table></div>
-            <div class="pagination"><span id="page-info" class="muted small"></span><div><button id="prev-page" type="button" class="secondary compact icon-button" aria-label="上一页"><img src="{{ url_for('static', filename='images/arrow-left.svg') }}" alt=""></button><button id="next-page" type="button" class="secondary compact icon-button" aria-label="下一页"><img src="{{ url_for('static', filename='images/arrow-right.svg') }}" alt=""></button></div></div>
+            <p id="data-empty" class="muted small data-empty">上传文件后查看反馈数据</p>
+            <div id="content-section" hidden>
+                <div class="table-scroll" tabindex="0" role="region" aria-label="上传反馈数据，可横向和纵向滚动"><table id="data-table"><thead></thead><tbody></tbody></table></div>
+                <div class="pagination"><span id="page-info" class="muted small"></span><div><button id="prev-page" type="button" class="secondary compact icon-button" aria-label="上一页"><img src="{{ url_for('static', filename='images/arrow-left.svg') }}" alt=""></button><button id="next-page" type="button" class="secondary compact icon-button" aria-label="下一页"><img src="{{ url_for('static', filename='images/arrow-right.svg') }}" alt=""></button></div></div>
+            </div>
         </div>
         <div id="result-section" role="tabpanel" aria-labelledby="report-tab" hidden>
             <p id="push-status" class="muted small" role="status" aria-live="polite" hidden></p>

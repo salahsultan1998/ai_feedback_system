@@ -10,6 +10,7 @@ from flask import Flask, jsonify
 from feedback.config import ROOT, load_settings
 from feedback.storage import Storage
 from feedback.jobs import Jobs
+from feedback.prompt_store import PromptStore
 from feedback.runtime import configure_runtime
 from feedback.workspaces import Workspaces
 from web.pages import pages
@@ -30,6 +31,7 @@ def create_app(test_config=None):
     configure_runtime(app)
     storage = Storage(Path(app.config["STORAGE_ROOT"]))
     app.extensions.update(storage=storage, jobs=Jobs(storage, app.logger), feishu_lock=threading.Lock())
+    app.extensions["prompts"] = PromptStore(storage.root / "prompts.sqlite3")
     workspaces = Workspaces(storage, app.extensions["jobs"], app.logger)
     app.extensions["workspaces"] = workspaces
     if not app.testing:

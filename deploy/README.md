@@ -35,7 +35,8 @@ Paste the generated value into `FLASK_SECRET_KEY`, set `OPENROUTER_API_KEY`, and
 | Variable | Production value/purpose |
 | --- | --- |
 | `FEEDBACK_ENV` | `production`; enables deployment validation and exclusive storage ownership |
-| `FEEDBACK_STORAGE` | Absolute private working directory, here `/var/lib/ai-feedback`; uploaded data is temporary |
+| `FEEDBACK_STORAGE` | Absolute private data directory, here `/var/lib/ai-feedback`; holds temporary uploads and the persistent prompt database |
+| `FEEDBACK_PROMPT_PASSWORD_BALOOT`, `FEEDBACK_PROMPT_PASSWORD_XINJIANG` | Optional, separate random passwords for editing each game's prompts |
 | `FLASK_SECRET_KEY` | Random secret, at least 32 characters |
 | `FEEDBACK_ALLOWED_HOSTS` | Your hostname, for example `feedback.example.com` |
 | `FEEDBACK_SECURE_COOKIES` | `true` for HTTPS-only browser cookies |
@@ -89,7 +90,7 @@ This uses a brief maintenance window. Ask colleagues to download reports before 
 
 ## Storage, backups and monitoring
 
-The storage directory holds temporary files while a page is in use. Refresh/close requests cancel that page's worker and delete its files after active operations finish. A cleanup thread checks every 15 seconds; 30 minutes without heartbeat expires abandoned pages. Startup removes remaining folders marked with `workspace.json`. Downloaded copies and previously sent Feishu content are unaffected. Storage can start empty; do not migrate old reports into it or back up these temporary files.
+The storage directory holds temporary files while a page is in use. Refresh/close requests cancel that page's worker and delete its files after active operations finish. A cleanup thread checks every 15 seconds; 30 minutes without heartbeat expires abandoned pages. Startup removes remaining folders marked with `workspace.json`. Downloaded copies and previously sent Feishu content are unaffected. The app creates `prompts.sqlite3` in this directory on startup. Keep it across deployments and include it in backups (copy it while the service is stopped). Temporary uploads and reports do not need backups.
 
 Back up code/configuration and protect `/etc/ai-feedback.env` separately. Existing folders from before temporary workspaces were introduced are not automatically removed and are no longer accessible through the app; archive or remove them separately after checking whether you need their contents. Do not delete files underneath a running report or push. Duplicate-send protection exists only until the workspace is deleted.
 

@@ -1,4 +1,4 @@
-"""Configuration is read from the repository, never changed by web requests."""
+"""Read repository defaults and assemble the prompts used by a report."""
 import json
 import math
 from pathlib import Path
@@ -28,7 +28,19 @@ def load_settings(root=ROOT):
     return read_json(Path(root) / "config/settings.json")
 
 
-def load_config(code, root=ROOT):
+def read_prompt_templates(folder):
+    names = ["classification", "suggestions", "issues"]
+    if (folder / "prompts" / "bugs.md").exists():
+        names.append("bugs")
+    return {name: (folder / "prompts" / f"{name}.md").read_text(encoding="utf-8") for name in names}
+
+
+def validate_prompt_template(name, prompt):
+    if name == "classification" and "{{LABEL_SCHEMA}}" not in prompt:
+        raise ValueError("分类提示词缺少 {{LABEL_SCHEMA}}。")
+
+
+def load_config(code, root=ROOT, prompt_overrides=None):
     game = get_game(code, root)
     if not game["enabled"]:
         raise ValueError("此游戏的分类与提示词尚未配置完成。")
@@ -66,13 +78,9 @@ def load_config(code, root=ROOT):
     if reasons is not None and (not isinstance(reasons, list) or not reasons or
             any(not isinstance(reason, str) or not reason.strip() for reason in reasons) or len(set(reasons)) != len(reasons)):
         raise ValueError("语义排除原因必须为不重复的非空字符串列表。")
-    prompt_names = ["classification", "suggestions", "issues"]
-    if (folder / "prompts" / "bugs.md").exists():
-        prompt_names.append("bugs")
-    for name in prompt_names:
-        prompt = (folder / "prompts" / f"{name}.md").read_text(encoding="utf-8")
-        if name == "classification" and "{{LABEL_SCHEMA}}" not in prompt:
-            raise ValueError("分类提示词缺少 {{LABEL_SCHEMA}}。")
+    for name, default in read_prompt_templates(folder).items():
+        prompt = (prompt_overrides or {}).get(name, default)
+        validate_prompt_template(name, prompt)
         config[name + "_prompt"] = prompt.replace("{{GAME_NAME}}", game["name"]).replace(
             "{{LABEL_SCHEMA}}", json.dumps(config["schema"], ensure_ascii=False))
         if name in {"suggestions", "issues", "bugs"}:

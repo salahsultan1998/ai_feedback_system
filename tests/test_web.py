@@ -32,6 +32,44 @@ class WebTests(BaseTest):
         self.assertEqual(preview["rows"][0][0],"000")
         self.assertEqual(self.client.get("/static/../config/settings.json").status_code,404)
 
+    def test_prompt_overrides_are_protected_persistent_and_used_by_new_reports(self):
+        url = "/api/games/baloot/prompts"
+        other_url = "/api/games/xinjiang/prompts"
+        with patch.dict(os.environ, {"FEEDBACK_PROMPT_PASSWORD_BALOOT": "test-baloot",
+                                     "FEEDBACK_PROMPT_PASSWORD_XINJIANG": "test-xinjiang",
+                                     "OPENROUTER_API_KEY": "test-only"}):
+            default = self.client.get(url).get_json()["prompts"]["classification"]
+            update = {"name": "classification", "revision": default["revision"],
+                      "text": default["text"] + "\n配置保存验证", "password": "test-baloot"}
+            self.assertEqual(self.client.post(url, json=update).status_code, 403)
+            other = self.client.get(other_url).get_json()["prompts"]["classification"]
+            self.assertEqual(self.client.post(other_url, json={**update, "revision": other["revision"]},
+                                              headers=self.headers).status_code, 403)
+            self.assertEqual(self.client.post(url, json={**update, "text": "缺少分类占位符"},
+                                              headers=self.headers).status_code, 400)
+            saved = self.client.post(url, json=update, headers=self.headers)
+            self.assertEqual(saved.status_code, 200, saved.get_json())
+            version = saved.get_json()
+            self.assertEqual(version["previous"], default["text"])
+            self.assertEqual(self.client.post(url, json=update, headers=self.headers).status_code, 409)
+            base = self.upload()
+            with patch.object(self.app.extensions["jobs"], "start", return_value={"id": "test-job"}) as start:
+                result = self.client.post(base + "/reports", headers=self.headers,
+                                          json={"start": "2026-10-19", "end": "2026-10-22"})
+            self.assertEqual(result.status_code, 202, result.get_json())
+            self.assertIn("配置保存验证", start.call_args.args[2]["classification_prompt"])
+
+            restarted = create_app({"TESTING": True, "STORAGE_ROOT": self.root / "web"})
+            client = workspace_client(restarted)
+            self.assertEqual(client.get(url).get_json()["prompts"]["classification"], version)
+            self.assertEqual(client.get(other_url).get_json()["prompts"]["classification"], other)
+            with client.session_transaction() as session:
+                headers = {"X-CSRF-Token": session["csrf"]}
+            restored = client.post(url, json={**update, "text": version["previous"],
+                                              "revision": version["revision"]}, headers=headers)
+            self.assertEqual(restored.status_code, 200, restored.get_json())
+            self.assertEqual(restored.get_json()["text"], default["text"])
+
     def test_api_generates_downloadable_report(self):
         base = self.upload()
         with patch.dict(os.environ, {"OPENROUTER_API_KEY":"test-only"}), patch("feedback.ai_client.request_json",side_effect=fake_request):

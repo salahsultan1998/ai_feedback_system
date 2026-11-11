@@ -1,7 +1,8 @@
 /* Workspace behavior. Business rules and configuration stay on the server. */
 const $ = selector => document.querySelector(selector);
 const workspace = $("#workspace");
-const base = `/api/games/${encodeURIComponent(workspace.dataset.game)}/uploads`;
+const gameApi = `/api/games/${encodeURIComponent(workspace.dataset.game)}`;
+const base = `${gameApi}/uploads`;
 const csrf = $('meta[name="csrf-token"]').content;
 const workspaceToken = workspace.dataset.workspace;
 const uploadHint = $("#file-summary").textContent;
@@ -21,31 +22,37 @@ window.addEventListener("pageshow", event => {
     if (event.persisted) window.location.reload();
 });
 window.addEventListener("beforeunload", event => {
-    if (!reviewDirty()) return;
+    if (!reviewDirty() && !Object.keys(promptDrafts).length) return;
     event.preventDefault();
     event.returnValue = "";
 });
 
+const tabs = {config: "#config-section", data: "#data-section", report: "#result-section"};
+const tabNames = Object.keys(tabs);
+
 function switchTab(name, focus = false) {
-    for (const key of ["data", "report"]) {
+    for (const key of tabNames) {
         const active = key === name;
         const tab = $(`#${key}-tab`);
         tab.classList.toggle("active", active);
         tab.setAttribute("aria-selected", String(active));
         tab.tabIndex = active ? 0 : -1;
-        $(key === "data" ? "#data-section" : "#result-section").hidden = !active;
+        $(tabs[key]).hidden = !active;
         if (active && focus) tab.focus();
     }
-    $("#date-span").hidden = name === "report";
+    $("#date-span").hidden = name !== "data" || !run;
     $("#downloads").hidden = name !== "report" || !$("#download-md").dataset.ready;
+    if (name === "config" && !promptConfig) loadPrompts();
 }
-for (const name of ["data", "report"]) {
+for (const [index, name] of tabNames.entries()) {
     const tab = $(`#${name}-tab`);
     tab.addEventListener("click", () => switchTab(name));
     tab.addEventListener("keydown", event => {
         if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
             event.preventDefault();
-            switchTab(event.key === "Home" ? "data" : event.key === "End" ? "report" : name === "data" ? "report" : "data", true);
+            const next = event.key === "Home" ? 0 : event.key === "End" ? tabNames.length - 1 :
+                (index + (event.key === "ArrowLeft" ? -1 : 1) + tabNames.length) % tabNames.length;
+            switchTab(tabNames[next], true);
         }
     });
 }
@@ -71,6 +78,104 @@ async function api(url, options = {}) {
 function post(url, data) {
     return api(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(data)});
 }
+
+const promptLabels = {classification: "翻译与分类", suggestions: "玩家建议", issues: "重点问题", bugs: "疑似 BUG"};
+const promptUrl = `${gameApi}/prompts`;
+let promptConfig = null, promptDrafts = {};
+let loadingPrompts = false, savingPrompt = false;
+
+function promptStatus(message, failed = false) {
+    $("#prompt-status").textContent = message;
+    $("#prompt-status").classList.toggle("failed", failed);
+}
+
+function showPrompt() {
+    const name = $("#prompt-kind").value;
+    const current = promptConfig.prompts[name];
+    $("#prompt-text").value = promptDrafts[name] ?? current.text;
+    $("#prompt-text").readOnly = !promptConfig.editable;
+    $("#prompt-version").textContent = current.version ? `第 ${current.version} 版` : "仓库默认";
+    $("#prompt-hint").textContent = !promptConfig.editable ? "此游戏尚未设置编辑密码" :
+        name === "classification" ? "保留 {{LABEL_SCHEMA}} 以载入游戏分类。保存后用于新报告。" : "保存后用于新报告";
+    $("#prompt-actions").hidden = !promptConfig.editable;
+    $("#prompt-previous").hidden = current.previous === null;
+    $("#prompt-save").disabled = !(name in promptDrafts);
+}
+
+async function loadPrompts() {
+    if (loadingPrompts || savingPrompt) return;
+    loadingPrompts = true;
+    $("#prompt-reload").hidden = true;
+    $("#prompt-form").hidden = true;
+    promptStatus("正在读取提示词…");
+    try {
+        const result = await api(promptUrl);
+        const kind = $("#prompt-kind");
+        const selected = kind.value;
+        kind.replaceChildren(...Object.entries(promptLabels)
+            .filter(([name]) => name in result.prompts)
+            .map(([name, label]) => new Option(label, name)));
+        if (selected in result.prompts) kind.value = selected;
+        promptConfig = result;
+        promptDrafts = {};
+        showPrompt();
+        promptStatus("");
+    } catch (failure) {
+        promptStatus(failure.message, true);
+        $("#prompt-reload").hidden = false;
+    } finally {
+        $("#prompt-form").hidden = !promptConfig;
+        loadingPrompts = false;
+    }
+}
+
+function updatePromptDraft() {
+    const name = $("#prompt-kind").value;
+    const text = $("#prompt-text").value;
+    if (text === promptConfig.prompts[name].text) delete promptDrafts[name];
+    else promptDrafts[name] = text;
+    $("#prompt-save").disabled = !(name in promptDrafts);
+}
+
+$("#prompt-kind").addEventListener("change", () => {
+    showPrompt();
+    if ($("#prompt-reload").hidden) promptStatus("");
+});
+$("#prompt-text").addEventListener("input", updatePromptDraft);
+$("#prompt-previous").addEventListener("click", () => {
+    $("#prompt-text").value = promptConfig.prompts[$("#prompt-kind").value].previous;
+    updatePromptDraft();
+    promptStatus("已载入上一版，保存后生效");
+});
+$("#prompt-reload").addEventListener("click", () => {
+    if (Object.keys(promptDrafts).length && !window.confirm("重新读取会清除未保存的提示词修改。继续吗？")) return;
+    loadPrompts();
+});
+$("#prompt-form").addEventListener("submit", async event => {
+    event.preventDefault();
+    const name = $("#prompt-kind").value;
+    if (savingPrompt || !promptConfig?.editable || !(name in promptDrafts)) return;
+    savingPrompt = true;
+    const controls = ["#prompt-kind", "#prompt-text", "#prompt-previous", "#prompt-password", "#prompt-save"];
+    for (const selector of controls) $(selector).disabled = true;
+    const password = $("#prompt-password").value;
+    $("#prompt-password").value = "";
+    promptStatus("正在保存…");
+    try {
+        promptConfig.prompts[name] = await post(promptUrl, {name, password, text: promptDrafts[name],
+            revision: promptConfig.prompts[name].revision});
+        delete promptDrafts[name];
+        $("#prompt-reload").hidden = true;
+        promptStatus("已保存，新报告将使用此版本");
+    } catch (failure) {
+        promptStatus(failure.message, true);
+        if (failure.status === 409) $("#prompt-reload").hidden = false;
+    } finally {
+        savingPrompt = false;
+        for (const selector of controls) $(selector).disabled = false;
+        showPrompt();
+    }
+});
 
 function runUrl() { return `${base}/${run}`; }
 function jobUrl() { return `${runUrl()}/jobs/${job}`; }
@@ -609,6 +714,7 @@ async function loadUpload(metadata, selected = null) {
     reportComplete = false;
     resetReview();
     $("#content-section").hidden = false;
+    $("#data-empty").hidden = true;
     $("#report-form").hidden = false;
     $("#file-summary").textContent = `${metadata.total.toLocaleString()} 行 · ${metadata.valid.toLocaleString()} 条待分析 · ${metadata.excluded.toLocaleString()} 条排除`;
     $("#file-label").textContent = metadata.filename;
