@@ -22,7 +22,7 @@ window.addEventListener("pageshow", event => {
     if (event.persisted) window.location.reload();
 });
 window.addEventListener("beforeunload", event => {
-    if (!reviewDirty() && !Object.keys(promptDrafts).length) return;
+    if (!reviewDirty() && !Object.keys(promptDrafts).length && !window.projectConfig?.dirty()) return;
     event.preventDefault();
     event.returnValue = "";
 });
@@ -42,7 +42,7 @@ function switchTab(name, focus = false) {
     }
     $("#date-span").hidden = name !== "data" || !run;
     $("#downloads").hidden = name !== "report" || !$("#download-md").dataset.ready;
-    if (name === "config" && !promptConfig) loadPrompts();
+    if (name === "config") window.projectConfig?.open();
 }
 for (const [index, name] of tabNames.entries()) {
     const tab = $(`#${name}-tab`);
@@ -67,9 +67,11 @@ async function api(url, options = {}) {
         headers: {"X-CSRF-Token": csrf, "X-Workspace": workspaceToken, ...options.headers}});
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
+        if (response.status === 401 && data.login_url) window.location.assign(data.login_url);
         const failure = new Error(data.error || "请求失败，请刷新页面后重试。");
         failure.status = response.status;
         failure.busy = data.busy;
+        failure.locked = data.locked;
         throw failure;
     }
     return data;
@@ -110,6 +112,7 @@ async function loadPrompts() {
     promptStatus("正在读取提示词…");
     try {
         const result = await api(promptUrl);
+        if (!window.projectConfig?.unlocked()) return;
         const kind = $("#prompt-kind");
         const selected = kind.value;
         kind.replaceChildren(...Object.entries(promptLabels)
@@ -121,6 +124,7 @@ async function loadPrompts() {
         showPrompt();
         promptStatus("");
     } catch (failure) {
+        if (failure.locked) window.projectConfig?.expired();
         promptStatus(failure.message, true);
         $("#prompt-reload").hidden = false;
     } finally {
@@ -156,24 +160,25 @@ $("#prompt-form").addEventListener("submit", async event => {
     const name = $("#prompt-kind").value;
     if (savingPrompt || !promptConfig?.editable || !(name in promptDrafts)) return;
     savingPrompt = true;
-    const controls = ["#prompt-kind", "#prompt-text", "#prompt-previous", "#prompt-password", "#prompt-save"];
+    const controls = ["#prompt-kind", "#prompt-text", "#prompt-previous", "#prompt-save"];
     for (const selector of controls) $(selector).disabled = true;
-    const password = $("#prompt-password").value;
-    $("#prompt-password").value = "";
     promptStatus("正在保存…");
     try {
-        promptConfig.prompts[name] = await post(promptUrl, {name, password, text: promptDrafts[name],
+        const result = await post(promptUrl, {name, text: promptDrafts[name],
             revision: promptConfig.prompts[name].revision});
+        if (!promptConfig) return;
+        promptConfig.prompts[name] = result;
         delete promptDrafts[name];
         $("#prompt-reload").hidden = true;
         promptStatus("已保存，新报告将使用此版本");
     } catch (failure) {
+        if (failure.locked) window.projectConfig?.expired();
         promptStatus(failure.message, true);
         if (failure.status === 409) $("#prompt-reload").hidden = false;
     } finally {
         savingPrompt = false;
         for (const selector of controls) $(selector).disabled = false;
-        showPrompt();
+        if (promptConfig) showPrompt();
     }
 });
 

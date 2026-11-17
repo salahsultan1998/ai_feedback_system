@@ -162,3 +162,31 @@ tbody tr:hover td { background: #fafafa; }
     .source-columns { grid-template-columns: minmax(0, 1fr); }
     #review-draft-status { flex-basis: 100%; order: -1; }
 }
+
+.workspace-nav { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 24px; }
+.workspace-nav .back-link { margin: 0; flex: 0 0 auto; }
+.config-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; font-size: 14px; }
+.config-end { margin-left: auto; }
+.config-unlock h2, .config-group h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.config-unlock p, .config-group p { margin: 8px 0 12px; line-height: 1.55; }
+.config-status { margin: 12px 0; }
+.config-status:empty { display: none; }
+.config-status.failed { color: #9f2525; }
+#config-prompts, #config-editor { margin-top: 20px; }
+.config-group + .config-group { margin-top: 24px; }
+.config-group > h2 { margin-bottom: 12px; }
+.config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 208px), 1fr)); gap: 12px; }
+.config-field { display: grid; align-content: start; gap: 4px; font-size: 13px; min-width: 0; }
+.config-field textarea { resize: vertical; }
+.config-list { display: grid; gap: 8px; }
+.config-list > button { justify-self: start; }
+.config-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 8px; }
+.config-details { min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+.config-details summary { cursor: pointer; padding: 8px 12px; font-size: 14px; min-height: 32px; overflow-wrap: anywhere; }
+.config-details > div { padding: 4px 12px 12px; }
+.config-history { display: grid; gap: 8px; padding: 0; list-style: none; }
+.config-history li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
+@media (max-width: 540px) {
+    .config-details > div { padding-inline: 8px; }
+    .workspace-nav .account-controls span { display: none; }
+}

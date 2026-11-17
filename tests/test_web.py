@@ -35,16 +35,21 @@ class WebTests(BaseTest):
     def test_prompt_overrides_are_protected_persistent_and_used_by_new_reports(self):
         url = "/api/games/baloot/prompts"
         other_url = "/api/games/xinjiang/prompts"
+        unlock = "/api/games/baloot/config/unlock"
+        other_unlock = "/api/games/xinjiang/config/unlock"
         with patch.dict(os.environ, {"FEEDBACK_PROMPT_PASSWORD_BALOOT": "test-baloot",
                                      "FEEDBACK_PROMPT_PASSWORD_XINJIANG": "test-xinjiang",
                                      "OPENROUTER_API_KEY": "test-only"}):
+            self.assertEqual(self.client.get(url).status_code, 403)
+            self.assertEqual(self.client.post(unlock, json={"password": "test-baloot"}, headers=self.headers).status_code, 200)
             default = self.client.get(url).get_json()["prompts"]["classification"]
             update = {"name": "classification", "revision": default["revision"],
-                      "text": default["text"] + "\n配置保存验证", "password": "test-baloot"}
+                      "text": default["text"] + "\n配置保存验证"}
             self.assertEqual(self.client.post(url, json=update).status_code, 403)
+            self.assertEqual(self.client.get(other_url).status_code, 403)
+            self.assertEqual(self.client.post(other_url, json=update, headers=self.headers).status_code, 403)
+            self.assertEqual(self.client.post(other_unlock, json={"password": "test-xinjiang"}, headers=self.headers).status_code, 200)
             other = self.client.get(other_url).get_json()["prompts"]["classification"]
-            self.assertEqual(self.client.post(other_url, json={**update, "revision": other["revision"]},
-                                              headers=self.headers).status_code, 403)
             self.assertEqual(self.client.post(url, json={**update, "text": "缺少分类占位符"},
                                               headers=self.headers).status_code, 400)
             saved = self.client.post(url, json=update, headers=self.headers)
@@ -61,10 +66,13 @@ class WebTests(BaseTest):
 
             restarted = create_app({"TESTING": True, "STORAGE_ROOT": self.root / "web"})
             client = workspace_client(restarted)
-            self.assertEqual(client.get(url).get_json()["prompts"]["classification"], version)
-            self.assertEqual(client.get(other_url).get_json()["prompts"]["classification"], other)
             with client.session_transaction() as session:
                 headers = {"X-CSRF-Token": session["csrf"]}
+            self.assertEqual(client.get(url).status_code, 403)
+            client.post(unlock, json={"password": "test-baloot"}, headers=headers)
+            client.post(other_unlock, json={"password": "test-xinjiang"}, headers=headers)
+            self.assertEqual(client.get(url).get_json()["prompts"]["classification"], version)
+            self.assertEqual(client.get(other_url).get_json()["prompts"]["classification"], other)
             restored = client.post(url, json={**update, "text": version["previous"],
                                               "revision": version["revision"]}, headers=headers)
             self.assertEqual(restored.status_code, 200, restored.get_json())

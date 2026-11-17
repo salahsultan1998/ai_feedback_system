@@ -3,7 +3,7 @@
 {% block favicon %}<link rel="icon" href="{{ icon_url(game.image) }}">{% endblock %}
 {% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/game.css') }}">{% endblock %}
 {% block content %}
-<a class="back-link" href="{{ url_for('pages.home') }}">← 返回游戏</a>
+<div class="workspace-nav"><a class="back-link" href="{{ url_for('pages.home') }}">← 返回游戏</a>{% include "account.html" %}</div>
 <header class="workspace-heading">
     <span class="game-avatar" aria-hidden="true">
         <img src="{{ icon_url(game.image) }}" alt="">
@@ -70,23 +70,49 @@
             </div>
         </div>
         <div id="config-section" class="prompt-panel" role="tabpanel" aria-labelledby="config-tab" hidden>
-            <form id="prompt-form" method="post" hidden>
-                <div class="prompt-heading">
-                    <label for="prompt-kind">提示词</label>
-                    <select id="prompt-kind" class="prompt-input"></select>
-                    <span id="prompt-version" class="muted small"></span>
-                </div>
-                <textarea id="prompt-text" class="prompt-input" aria-label="提示词正文" aria-describedby="prompt-hint" spellcheck="false" maxlength="20000" rows="13"></textarea>
-                <p id="prompt-hint" class="muted small prompt-hint"></p>
-                <div id="prompt-actions" class="prompt-actions" hidden>
-                    <button id="prompt-previous" class="secondary compact" type="button" hidden>恢复上一版</button>
-                    <label for="prompt-password">编辑密码</label>
-                    <input id="prompt-password" class="prompt-input" type="password" autocomplete="current-password" required>
-                    <button id="prompt-save" type="submit" disabled>保存提示词</button>
+            <form id="config-unlock" class="config-unlock" method="post" hidden>
+                <h2>解锁 {{ game.name }} 配置</h2>
+                <p class="muted">输入此项目的编辑密码，解锁 30 分钟</p>
+                <div class="config-toolbar">
+                    <label for="config-password">项目密码</label>
+                    <input id="config-password" class="prompt-input" type="password" autocomplete="current-password" required maxlength="1024">
+                    <button type="submit">解锁</button>
                 </div>
             </form>
-            <p id="prompt-status" class="muted small" role="status" aria-live="polite"></p>
-            <button id="prompt-reload" class="secondary compact" type="button" hidden>重新读取</button>
+            <div id="config-navigation" class="config-toolbar" hidden>
+                <label for="config-view">配置项</label>
+                <select id="config-view" class="prompt-input">
+                    <option value="prompts">提示词</option><option value="report">统计规则</option>
+                    <option value="labels">标签与术语</option><option value="settings">高级设置</option>
+                    <option value="history">版本记录</option>
+                </select>
+                <button id="config-lock" class="secondary compact config-end" type="button">锁定配置</button>
+            </div>
+            <p id="config-status" class="config-status small muted" role="status" aria-live="polite"></p>
+            <div id="config-prompts" hidden>
+                <form id="prompt-form" method="post" hidden>
+                    <div class="prompt-heading">
+                        <label for="prompt-kind">提示词</label>
+                        <select id="prompt-kind" class="prompt-input"></select>
+                        <span id="prompt-version" class="muted small"></span>
+                    </div>
+                    <textarea id="prompt-text" class="prompt-input" aria-label="提示词正文" aria-describedby="prompt-hint" spellcheck="false" maxlength="20000" rows="13"></textarea>
+                    <p id="prompt-hint" class="muted small prompt-hint"></p>
+                    <div id="prompt-actions" class="prompt-actions" hidden>
+                        <button id="prompt-previous" class="secondary compact" type="button" hidden>恢复上一版</button>
+                        <button id="prompt-save" type="submit" disabled>保存提示词</button>
+                    </div>
+                </form>
+                <p id="prompt-status" class="muted small" role="status" aria-live="polite"></p>
+                <button id="prompt-reload" class="secondary compact" type="button" hidden>重新读取</button>
+            </div>
+            <form id="config-editor" method="post" hidden>
+                <div id="config-fields"></div>
+                <div class="prompt-actions">
+                    <button id="config-reload" class="secondary compact" type="button">重新读取</button>
+                    <button id="config-save" type="submit" disabled>保存配置</button>
+                </div>
+            </form>
         </div>
         <div id="data-section" role="tabpanel" aria-labelledby="data-tab">
             <p id="data-empty" class="muted small data-empty">上传文件后查看反馈数据</p>
@@ -115,4 +141,4 @@
 </main>
 {% endif %}
 {% endblock %}
-{% block scripts %}{% if game.enabled %}<script src="{{ url_for('static', filename='js/game.js') }}" defer></script>{% endif %}{% endblock %}
+{% block scripts %}{% if game.enabled %}<script src="{{ url_for('static', filename='js/game.js') }}" defer></script><script src="{{ url_for('static', filename='js/project-config.js') }}" defer></script>{% endif %}{% endblock %}

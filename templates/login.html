@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}登录 · AI 反馈统计{% endblock %}
+{% block content %}
+<main class="login-panel panel" aria-labelledby="login-title">
+    <img class="login-icon" src="{{ icon_url('app-icon.svg') }}" width="48" height="48" alt="">
+    <h1 id="login-title" class="title">登录 AI 反馈统计</h1>
+    <p class="muted">使用已获授权的 AI 翻译账号登录</p>
+    {% if error %}<p class="notice error" role="alert">{{ error }}</p>{% endif %}
+    <form class="login-form" method="post" action="{{ url_for('auth.login') }}">
+        <input type="hidden" name="csrf" value="{{ session['csrf'] }}">
+        <label>邮箱<input type="email" name="email" value="{{ email|default('') }}" autocomplete="username" required maxlength="254"></label>
+        <label>密码<input type="password" name="password" autocomplete="current-password" required maxlength="1024"></label>
+        <button type="submit">登录</button>
+    </form>
+</main>
+{% endblock %}

@@ -42,3 +42,24 @@ h2 { font-size: 18px; font-weight: 500; line-height: 1.4; }
 .notice.error { background: #fff5f5; color: #9f2525; border-color: #f5d6d6; }
 .notice.warning { background: #fffbeb; color: #8a5b12; border-color: #f3e6bd; }
 @media(max-width:480px) { .panel { padding: 20px 16px; } }
+
+.login-panel { width: min(100%, 440px); margin: 32px auto 0; padding: 32px; }
+.login-panel .title { margin-top: 16px; font-size: 28px; }
+.login-panel > p { margin: 8px 0 0; line-height: 1.6; }
+.login-panel > .notice { margin-top: 16px; }
+.login-icon { display: block; }
+.login-form { display: grid; gap: 16px; margin-top: 24px; }
+.login-form label { display: grid; gap: 8px; font-size: 14px; }
+.login-form input {
+    width: 100%; min-height: 44px; padding: 8px 12px; border: 1px solid var(--border);
+    border-radius: 8px; background: var(--surface); color: var(--text-primary); font: inherit;
+}
+.login-form button { margin-top: 4px; min-height: 44px; }
+.account-controls { display: flex; align-items: center; gap: 12px; margin-left: auto; min-width: 0; }
+.account-controls span { overflow-wrap: anywhere; }
+.account-controls button { flex: 0 0 auto; padding: 4px 12px; min-height: 32px; font-size: 12px; }
+@media (max-width: 620px) {
+    .login-panel { margin-top: 0; padding: 24px; }
+    .home-heading { flex-wrap: wrap; }
+    .home-heading .account-controls { width: 100%; margin-left: 0; }
+}

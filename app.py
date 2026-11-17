@@ -15,6 +15,7 @@ from feedback.runtime import configure_runtime
 from feedback.workspaces import Workspaces
 from web.pages import pages
 from web.api import api
+from web.auth import auth_settings, install_auth
 
 
 def create_app(test_config=None):
@@ -28,6 +29,7 @@ def create_app(test_config=None):
         TRUSTED_HOSTS=["localhost", "127.0.0.1", "[::1]"])
     if test_config:
         app.config.update(test_config)
+    identity = auth_settings()
     configure_runtime(app)
     storage = Storage(Path(app.config["STORAGE_ROOT"]))
     app.extensions.update(storage=storage, jobs=Jobs(storage, app.logger), feishu_lock=threading.Lock())
@@ -38,6 +40,7 @@ def create_app(test_config=None):
         workspaces.start_cleaner()
     app.register_blueprint(pages)
     app.register_blueprint(api)
+    install_auth(app, identity)
 
     @app.template_global()
     def icon_url(name):

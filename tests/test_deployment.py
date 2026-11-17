@@ -24,6 +24,7 @@ class DeploymentTests(TestCase):
         self.storage = Path(temporary.name).resolve() / "private"
         self.environment = {
             "FEEDBACK_ENV": "production",
+            "FEEDBACK_AUTH_ENABLED": "false",  # Exercise transport and storage independently from Auth.
             "FEEDBACK_STORAGE": str(self.storage),
             "FLASK_SECRET_KEY": "deployment-test-secret-" + "x" * 32,
             "FEEDBACK_ALLOWED_HOSTS": "feedback.example.test",
@@ -54,6 +55,12 @@ class DeploymentTests(TestCase):
                 with self.assertRaises(RuntimeError):
                     self.app()
                 self.assertFalse(self.storage.exists())
+
+    def test_production_login_requires_configuration_by_default(self):
+        del os.environ["FEEDBACK_AUTH_ENABLED"]
+        with self.assertRaisesRegex(RuntimeError, "SUPABASE_URL"):
+            self.app()
+        self.assertFalse(self.storage.exists())
 
     def test_storage_cannot_be_project_root_or_public_static_directory(self):
         for target in (ROOT, ROOT / "static", ROOT / "static" / "private-feedback"):

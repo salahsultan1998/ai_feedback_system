@@ -1,0 +1,7 @@
+{% if g.auth_email %}
+<form class="account-controls" method="post" action="{{ url_for('auth.logout') }}">
+    <input type="hidden" name="csrf" value="{{ session['csrf'] }}">
+    <span class="muted small">{{ g.auth_email }}</span>
+    <button class="secondary" type="submit">退出登录</button>
+</form>
+{% endif %}

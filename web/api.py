@@ -1,4 +1,4 @@
-"""Workspace, prompt editing and report endpoints."""
+"""Workspace, project configuration and report endpoints."""
 from datetime import timedelta
 import os
 from pathlib import Path
@@ -8,7 +8,8 @@ from flask import Blueprint, current_app, g, jsonify, request, send_file, sessio
 import markdown
 from werkzeug.exceptions import HTTPException
 
-from feedback.config import get_game, load_config, read_prompt_templates, validate_prompt_template
+from feedback.config import (get_game, load_config, project_config_defaults, read_prompt_templates,
+                             validate_project_config, validate_prompt_template)
 from feedback.importer import read_feedback
 from feedback.cleaning import clean_feedback, parse_dates
 from feedback.storage import atomic_csv, atomic_json, read_csv
@@ -25,8 +26,8 @@ def services():
 
 
 def config_for(game, use_saved_prompts=False):
-    prompts = current_app.extensions["prompts"].overrides(game) if use_saved_prompts else None
-    return load_config(game, current_app.config["PROJECT_ROOT"], prompts)
+    project, prompts = current_app.extensions["prompts"].runtime_overrides(game, use_saved_prompts)
+    return load_config(game, current_app.config["PROJECT_ROOT"], prompts, project_overrides=project)
 
 
 @api.before_request
@@ -77,23 +78,117 @@ def unexpected(error):
     return jsonify(error="无法完成请求，请检查文件格式或服务日志。"), 500
 
 
-@api.route("/games/<game>/prompts", methods=["GET", "POST"])
-def prompts(game):
+def project_password(game):
     root = current_app.config["PROJECT_ROOT"]
     if not get_game(game, root)["enabled"]:
         raise ValueError("此游戏尚未启用。")
-    defaults = read_prompt_templates(Path(root) / "config" / game)
-    store = current_app.extensions["prompts"]
-    password = os.getenv(f"FEEDBACK_PROMPT_PASSWORD_{game.upper().replace('-', '_')}", "")
-    if request.method == "GET":
-        return jsonify(editable=bool(password), prompts=store.read(game, defaults))
+    return os.getenv(f"FEEDBACK_PROMPT_PASSWORD_{game.upper().replace('-', '_')}", "")
 
+
+def project_unlock_expiry(game, password):
+    return current_app.extensions["prompts"].unlock_expiry(session["csrf"], game) if password else None
+
+
+def locked_configuration():
+    return jsonify(locked=True, error="请先解锁此项目的配置。"), 403
+
+
+def configuration_state(state, expires):
+    return configuration_json({"unlocked": True, "available": True, "expires_at": expires, **state})
+
+
+def configuration_json(payload):
+    # Object order is meaningful for the taxonomy and the exported Excel columns.
+    return current_app.response_class(current_app.json.dumps(payload, sort_keys=False), mimetype="application/json")
+
+
+def json_object():
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         raise ValueError("请求格式无效。")
-    supplied = data.get("password")
-    if not password or not isinstance(supplied, str) or not compare_digest(supplied.encode(), password.encode()):
-        return jsonify(error="该游戏的编辑密码不正确或尚未设置。"), 403
+    return data
+
+
+@api.route("/games/<game>/config", methods=["GET", "POST"])
+def project_configuration(game):
+    password = project_password(game)
+    expires = project_unlock_expiry(game, password)
+    if not expires:
+        if request.method == "GET":
+            return jsonify(unlocked=False, available=bool(password))
+        return locked_configuration()
+    root = current_app.config["PROJECT_ROOT"]
+    default = project_config_defaults(game, root)
+    store = current_app.extensions["prompts"]
+    if request.method == "GET":
+        return configuration_state(store.read_config(game, default), expires)
+    data = json_object()
+    value = data.get("value")
+    validate_project_config(game, root, value, default)
+    state = store.save_config(game, default, data.get("revision"), value, g.get("auth_email"))
+    return configuration_state(state, expires)
+
+
+@api.post("/games/<game>/config/unlock")
+def unlock_project_configuration(game):
+    password = project_password(game)
+    supplied = json_object().get("password")
+    if not password:
+        return jsonify(error="此项目尚未设置编辑密码。"), 403
+    store = current_app.extensions["prompts"]
+    matched = isinstance(supplied, str) and compare_digest(supplied.encode(), password.encode())
+    expires, retry_after = store.unlock(session["csrf"], game, matched, g.get("auth_user_id") or session["csrf"])
+    if retry_after:
+        return jsonify(error="输入次数过多，请稍后再试。"), 429, {"Retry-After": str(retry_after)}
+    if not expires:
+        return jsonify(error="项目编辑密码不正确。"), 403
+    default = project_config_defaults(game, current_app.config["PROJECT_ROOT"])
+    return configuration_state(store.read_config(game, default), expires)
+
+
+@api.post("/games/<game>/config/lock")
+def lock_project_configuration(game):
+    password = project_password(game)
+    current_app.extensions["prompts"].lock(session["csrf"], game)
+    return jsonify(unlocked=False, available=bool(password))
+
+
+@api.get("/games/<game>/config/versions/<int:version>")
+def project_configuration_version(game, version):
+    if not project_unlock_expiry(game, project_password(game)):
+        return locked_configuration()
+    default = project_config_defaults(game, current_app.config["PROJECT_ROOT"])
+    return configuration_json({"value": current_app.extensions["prompts"].config_version(game, default, version)})
+
+
+@api.post("/games/<game>/config/restore")
+def restore_project_configuration(game):
+    expires = project_unlock_expiry(game, project_password(game))
+    if not expires:
+        return locked_configuration()
+    data = json_object()
+    version = data.get("version")
+    if type(version) is not int or not 0 <= version < 2 ** 63:
+        raise ValueError("请选择有效的配置版本。")
+    root = current_app.config["PROJECT_ROOT"]
+    default = project_config_defaults(game, root)
+    store = current_app.extensions["prompts"]
+    value = store.config_version(game, default, version)
+    validate_project_config(game, root, value, default)
+    return configuration_state(store.save_config(game, default, data.get("revision"), value,
+                                                  g.get("auth_email")), expires)
+
+
+@api.route("/games/<game>/prompts", methods=["GET", "POST"])
+def prompts(game):
+    if not project_unlock_expiry(game, project_password(game)):
+        return locked_configuration()
+    defaults = read_prompt_templates(Path(current_app.config["PROJECT_ROOT"]) / "config" / game)
+    store = current_app.extensions["prompts"]
+    if request.method == "GET":
+        return jsonify(editable=True, prompts=store.read(game, defaults))
+
+    data = json_object()
     name, body, revision = data.get("name"), data.get("text"), data.get("revision")
     if not isinstance(name, str) or name not in defaults:
         raise ValueError("提示词类型无效。")

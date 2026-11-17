@@ -25,7 +25,7 @@ Open [http://127.0.0.1:5050](http://127.0.0.1:5050). `PORT` optionally changes t
 
 ## Deploy for colleagues
 
-Follow [the single-server deployment guide](deploy/README.md) for Gunicorn, systemd, HTTPS through Nginx, and private temporary storage. The supplied setup keeps one app process and one active report slot shared by all colleagues. Each page owns its uploads and reports. Authentication is not included; restrict access to your company network or VPN. Start with [.env.example](.env.example) for production settings.
+Follow [the single-server deployment guide](deploy/README.md) for Gunicorn, systemd, HTTPS through Nginx, and private temporary storage. The supplied setup keeps one app process and one active report slot shared by all colleagues. Each page owns its uploads and reports. Production requires a permitted Supabase account. Restrict access to your company network or VPN. Start with [.env.example](.env.example) for production settings.
 
 ## Use the app
 
@@ -68,11 +68,13 @@ New reports preserve immutable originals in `report.original.md` and evidence in
 
 ## Configuration
 
-Global settings are overridden by `config/<game>/settings.json`. `OPENROUTER_MODEL` overrides the configured model. Game owners can edit prompt text from the game's **配置** tab.
+Production defaults to Supabase email/password login. Set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` (or `SUPABASE_ANON_KEY`) to the same project as AI Translation, and put the approved, confirmed email addresses in `FEEDBACK_ALLOWED_EMAILS` (comma-separated). The app keeps its own login sessions. For local testing, use `FEEDBACK_AUTH_ENABLED=true` with the same settings.
 
-1. Set the game's `FEEDBACK_PROMPT_PASSWORD_<GAME>` (for example, `FEEDBACK_PROMPT_PASSWORD_OKEY`) in the local `.env` or the server environment file. Generate a different value for each game with `python3 -c 'import secrets; print(secrets.token_urlsafe(24))'` and restart the app. A game without a password shows its prompts read-only.
-2. Open the game, select **配置**, choose a prompt, and save it with the game's password. **恢复上一版** loads the prior text for review. Save to make it active.
-3. The app creates `prompts.sqlite3` automatically under `FEEDBACK_STORAGE` (`storage/` locally by default). Keep this file when updating the code. Saved text takes precedence over the repository default, and each report uses the prompt text loaded when the job starts.
+1. Set a separate `FEEDBACK_PROMPT_PASSWORD_<GAME>` for each project, for example `FEEDBACK_PROMPT_PASSWORD_OKEY`. Open **配置** and enter that project's password to view or change settings. Unlocks last 30 minutes and can be locked manually.
+2. Edit prompts, report thresholds, labels and terminology, or advanced import and processing settings. Review saved versions in **版本记录** and load an older version as a draft before saving it again. Prompts retain their existing per-prompt previous version. Saved changes apply to new tasks; changes to import column mapping require a fresh upload.
+3. The existing `prompts.sqlite3` in `FEEDBACK_STORAGE` stores both prompts and project settings. It preserves previously saved prompts. Back it up and keep it when deploying or replacing the app. Repository files are the defaults until someone saves a project override.
+
+Feishu destinations and credentials, project password values and global upload limits remain managed on the server. If `OPENROUTER_MODEL` is set, it overrides the model selected in the configuration page.
 
 | File | Controls |
 | --- | --- |
