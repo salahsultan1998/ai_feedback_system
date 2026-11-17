@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% block title %}{{ game.name }} · AI 反馈统计{% endblock %}
-{% block favicon %}<link rel="icon" href="{{ url_for('static', filename='images/' + game.image) }}">{% endblock %}
+{% block favicon %}<link rel="icon" href="{{ icon_url(game.image) }}">{% endblock %}
 {% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/game.css') }}">{% endblock %}
 {% block content %}
 <a class="back-link" href="{{ url_for('pages.home') }}">← 返回游戏</a>
 <header class="workspace-heading">
     <span class="game-avatar" aria-hidden="true">
-        <img src="{{ url_for('static', filename='images/' + game.image) }}" alt="">
+        <img src="{{ icon_url(game.image) }}" alt="">
     </span>
     <div><h1 class="title">{{ game.name }}</h1><p class="muted heading-note">玩家反馈报告</p></div>
 </header>
@@ -24,7 +24,7 @@
         <form id="upload-form">
             <div class="file-row">
                 <label class="file-picker" id="upload-zone">
-                    <span class="file-icon" aria-hidden="true"><img src="{{ url_for('static', filename='images/upload-icon.svg') }}" alt=""></span>
+                    <span class="file-icon" aria-hidden="true"><img src="{{ icon_url('upload-icon.svg') }}" alt=""></span>
                     <span class="file-details"><span id="file-label">点击选择文件，或拖入这里</span><span id="file-summary" class="file-picker-note">支持 CSV / Excel（仅读取首个工作表），请包含本期及上周同期数据。</span></span>
                     <span id="change-file" class="change-file" hidden>更换文件</span>
                     <input id="file" type="file" name="file" accept=".csv,.xlsx" required aria-label="选择反馈文件">
@@ -92,7 +92,7 @@
             <p id="data-empty" class="muted small data-empty">上传文件后查看反馈数据</p>
             <div id="content-section" hidden>
                 <div class="table-scroll" tabindex="0" role="region" aria-label="上传反馈数据，可横向和纵向滚动"><table id="data-table"><thead></thead><tbody></tbody></table></div>
-                <div class="pagination"><span id="page-info" class="muted small"></span><div><button id="prev-page" type="button" class="secondary compact icon-button" aria-label="上一页"><img src="{{ url_for('static', filename='images/arrow-left.svg') }}" alt=""></button><button id="next-page" type="button" class="secondary compact icon-button" aria-label="下一页"><img src="{{ url_for('static', filename='images/arrow-right.svg') }}" alt=""></button></div></div>
+                <div class="pagination"><span id="page-info" class="muted small"></span><div><button id="prev-page" type="button" class="secondary compact icon-button" aria-label="上一页"><img src="{{ icon_url('arrow-left.svg') }}" alt=""></button><button id="next-page" type="button" class="secondary compact icon-button" aria-label="下一页"><img src="{{ icon_url('arrow-right.svg') }}" alt=""></button></div></div>
             </div>
         </div>
         <div id="result-section" role="tabpanel" aria-labelledby="report-tab" hidden>

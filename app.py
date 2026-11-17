@@ -5,7 +5,7 @@ import secrets
 import threading
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request, url_for
 
 from feedback.config import ROOT, load_settings
 from feedback.storage import Storage
@@ -39,6 +39,15 @@ def create_app(test_config=None):
     app.register_blueprint(pages)
     app.register_blueprint(api)
 
+    @app.template_global()
+    def icon_url(name):
+        filename = f"images/{name}"
+        try:
+            version = (Path(app.static_folder) / filename).stat().st_mtime_ns
+        except FileNotFoundError:
+            version = None
+        return url_for("static", filename=filename, v=version)
+
     @app.get("/healthz")
     def health():
         return jsonify(status="ok")
@@ -52,7 +61,10 @@ def create_app(test_config=None):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "same-origin"
         response.headers["Content-Security-Policy"] = "default-src 'self'; img-src 'self'; style-src 'self'; script-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'"
-        if response.mimetype in {"application/json", "text/html"} or "Content-Disposition" in response.headers:
+        if (request.endpoint == "static" and request.view_args["filename"].startswith("images/")
+                and request.args.get("v") and response.status_code in {200, 304}):
+            response.headers["Cache-Control"] = "public, max-age=604800, immutable"
+        elif response.mimetype in {"application/json", "text/html"} or "Content-Disposition" in response.headers:
             response.headers["Cache-Control"] = "no-store"
         return response
     return app

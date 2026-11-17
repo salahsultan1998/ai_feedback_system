@@ -1,5 +1,5 @@
 [
-  {"code": "baloot", "name": "Baloot", "image": "baloot.png", "enabled": true},
-  {"code": "okey", "name": "Okey", "image": "okey.png", "enabled": true},
-  {"code": "xinjiang", "name": "新疆", "image": "xinjiang.png", "enabled": true}
+  {"code": "baloot", "name": "Baloot", "image": "baloot.webp", "enabled": true},
+  {"code": "okey", "name": "Okey", "image": "okey.webp", "enabled": true},
+  {"code": "xinjiang", "name": "新疆", "image": "xinjiang.webp", "enabled": true}
 ]
