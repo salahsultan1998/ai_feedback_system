@@ -1,4 +1,6 @@
 """Independent, evidence-linked suspected malfunction extraction for review."""
+import re
+
 from .ai_client import cached_request, check_stop
 from .analysis import batches, evidence, fragments
 from .policies import abuse_mask, bug_mask
@@ -21,7 +23,7 @@ def analyze_bugs(snapshot, config, cache_dir, progress, should_stop=None):
     current = current.loc[bug_mask(current, config)]
     if current.empty:
         progress(stage="analysis", message=("本期没有 AI 识别的 BUG 候选，已跳过提炼" if config.get("candidate_source") == "ai"
-                       else "本期没有符合原标签的 BUG 候选，已跳过提炼"), done=0, total=0)
+                       else "本期没有符合标签的 BUG 候选，已跳过提炼"), done=0, total=0)
         return []
     contexts = {str(row["反馈ID"]): (row["最终标签"], row["具体主题"], row["三级主题"])
                 for row in current.to_dict("records")}
@@ -125,4 +127,8 @@ def analyze_bugs(snapshot, config, cache_dir, progress, should_stop=None):
                 pending = pending[count:]
             consolidated = [*kept, anchor]
         result.extend(consolidated)
+    # The section already attributes every entry to player reports.
+    for item in result:
+        text = item["text"]
+        item["text"] = re.sub(r"^玩家反映(?![的后])[\s，,:：]*", "", text) or text
     return unique(result)

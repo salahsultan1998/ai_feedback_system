@@ -1,0 +1,28 @@
+{
+  "classification_source": "source_label",
+  "column_mapping": {
+    "反馈ID": "反馈ID",
+    "用户ID": "用户ID",
+    "VIP等级": "VIP等级",
+    "用户自己填写的内容": "用户自己填写的内容",
+    "附加信息": "附加信息",
+    "反馈时间": "反馈时间",
+    "反馈标签": "反馈标签",
+    "用户主动选择的标签": "用户主动选择的标签"
+  },
+  "ignored_labels": ["重复反馈", "无效反馈"],
+  "suggestion_labels": ["建议与一般支持"],
+  "bug_labels": ["BUG"],
+  "feishu": {
+    "enabled": true,
+    "webhook_env": "FEISHU_OKEY_WEBHOOK",
+    "spreadsheet": {
+      "enabled": true,
+      "url": "https://aozalj10qx.feishu.cn/wiki/KI4nwOEx6iy5dFkBzzCc4sQ6nwe?from=from_copylink&sheet=1c0ba6",
+      "spreadsheet_token": "",
+      "app_id_env": "FEISHU_APP_ID_OKEY",
+      "app_secret_env": "FEISHU_APP_SECRET_OKEY",
+      "batch_rows": 500
+    }
+  }
+}

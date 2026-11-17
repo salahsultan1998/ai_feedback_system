@@ -27,8 +27,17 @@ def snapshot_entries(bugs):
             for index, item in enumerate(bugs)]
 
 
-def render_section(bugs):
-    """Render stable BUG codes; callers pass only entries included in the report."""
+def _entry_prefix(index, item, legacy):
+    from .exports.markdown import safe
+
+    if not legacy:
+        return f"{index}. "
+    categories = "、".join(_categories(item.get("categories"))) or "未细分"
+    return f"{index}. **【{safe(item['code'])} · {safe(item['label'])} · {safe(categories)}】** "
+
+
+def render_section(bugs, *, with_ids=False, legacy=False):
+    """List the included BUGs in report order."""
     from .exports.markdown import safe
 
     lines = [HEADING, ""]
@@ -36,13 +45,15 @@ def render_section(bugs):
         return "\n".join(lines + [EMPTY_TEXT, "", ""])
     references = {fid for item in bugs for fid in item["feedback_ids"]}
     lines += [f"共整理 **{len(bugs)} 个疑似问题，涉及 {len(references)} 条反馈**。以下为玩家描述，尚需进一步核实。", ""]
+    if with_ids:
+        lines += [f"<!-- bug-ids: {','.join(item['id'] for item in bugs)} -->", ""]
     for index, item in enumerate(bugs, 1):
-        code = item.get("code", f"BUG-{index:03d}")
-        categories = "、".join(_categories(item.get("categories"))) or "未细分"
+        if legacy and index > 1:
+            lines.append("")
         ids = list(dict.fromkeys(item["feedback_ids"]))
-        lines += [f"{index}. **【{safe(code)} · {safe(item['label'])} · {safe(categories)}】** "
-                  f"{safe(item['text'])}（相关反馈：{len(ids)} 条；反馈 ID：{safe('、'.join(ids))}）", ""]
-    return "\n".join(lines) + "\n"
+        lines.append(f"{_entry_prefix(index, item, legacy)}"
+                     f"{safe(item['text'])}（相关反馈：{len(ids)} 条；反馈 ID：{safe('、'.join(ids))}）")
+    return "\n".join(lines) + "\n\n"
 
 
 def _parts(text):
@@ -55,24 +66,37 @@ def _parts(text):
 
 
 def _active(section, originals):
-    """Read current edits from Markdown, anchored by immutable BUG codes and references."""
-    from .exports.markdown import safe
-
+    """Read current edits from Markdown, anchored by immutable IDs and references."""
     by_code = {item["code"]: item for item in originals}
     lines = [line for line in section.splitlines() if line.strip()]
     if lines == [HEADING, EMPTY_TEXT]:
         return {}
     if len(lines) < 3 or lines[0] != HEADING:
         raise ValueError(" BUG 清单结构已变化，请重新生成报告后编辑。")
-    active = {}
-    for index, line in enumerate(lines[2:], 1):
-        match = re.match(r"\d+\. \*\*【(BUG-\d+) · ", line)
-        code = match[1] if match else None
-        if code not in by_code or code in active:
+    entries = lines[2:]
+    manifest = re.fullmatch(r"<!-- bug-ids: (b\d+(?:,b\d+)*) -->", entries[0])
+    legacy = re.match(r"\d+\. \*\*【BUG-\d+ · ", entries[0]) is not None
+    if legacy:
+        codes = []
+        for line in entries:
+            code = re.match(r"\d+\. \*\*【(BUG-\d+) · ", line)
+            codes.append(code[1] if code else None)
+        if len(set(codes)) != len(codes) or any(code not in by_code for code in codes):
             raise ValueError(" BUG 编号已变化，请重新打开核查界面。")
-        original = by_code[code]
-        categories = "、".join(original["categories"]) or "未细分"
-        prefix = f"{index}. **【{safe(code)} · {safe(original['label'])} · {safe(categories)}】** "
+        included = [by_code[code] for code in codes]
+    elif manifest:
+        ids = manifest[1].split(",")
+        included = [item for item in originals if item["id"] in ids]
+        if ids != [item["id"] for item in included]:
+            raise ValueError(" BUG 编号已变化，请重新打开核查界面。")
+        entries = entries[1:]
+    else:
+        included = originals
+    if len(entries) != len(included):
+        raise ValueError("BUG 清单数量已变化，请重新生成报告。")
+    active = {}
+    for index, (line, original) in enumerate(zip(entries, included), 1):
+        prefix = _entry_prefix(index, original, legacy)
         match = re.fullmatch(r"(.*)（相关反馈：([1-9]\d*) 条；反馈 ID：(.+)）", line[len(prefix):]) if line.startswith(prefix) else None
         if not match:
             raise ValueError("BUG 内容或引用结构已变化，请重新生成报告。")
@@ -80,8 +104,8 @@ def _active(section, originals):
         if (len(ids) != int(match[2]) or len(ids) != len(set(ids)) or
                 any(fid not in original["feedback_ids"] for fid in ids)):
             raise ValueError("BUG 引用了不属于该问题的反馈。")
-        active[code] = {**original, "text": html.unescape(match[1]), "feedback_ids": ids}
-    if section.strip() != render_section(list(active.values())).strip():
+        active[original["code"]] = {**original, "text": html.unescape(match[1]), "feedback_ids": ids}
+    if section.strip() != render_section(list(active.values()), with_ids=bool(manifest), legacy=legacy).strip():
         raise ValueError("BUG 清单格式或汇总数量已变化，请重新生成报告。")
     return active
 
@@ -153,7 +177,7 @@ def save(folder, version, bugs):
             included.append({**original, "text": plain_text(value.strip()),
                              "feedback_ids": [fid for fid in original["feedback_ids"] if fid in ids]})
     prefix, section, suffix = _parts(current)
-    updated_section = render_section(included)
+    updated_section = render_section(included, with_ids=len(included) != len(originals))
     if section != updated_section:
         updated = validate_report_language(prefix + updated_section + suffix)
         temporary = folder / "report.bugs.tmp.md"

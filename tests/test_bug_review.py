@@ -6,6 +6,7 @@ from unittest import TestCase
 import pandas as pd
 
 from feedback import bug_review, report_review
+from feedback.feishu import report_text
 from feedback.review_state import mark_push_started
 from feedback.exports.markdown import render_markdown
 
@@ -54,6 +55,8 @@ class BugReviewTests(TestCase):
         self.assertEqual(details["bugs"][1]["sources"][0]["translation_zh"], "屏幕黑了。")
         self.assertEqual(details["bugs"][0]["feedback_ids"], ["0001", "0002"])
         self.assertIn("2 个疑似问题，涉及 3 条反馈", self.original)
+        self.assertIn("1. 玩家反映对局中出现黑屏。（相关反馈：2 条；反馈 ID：0001、0002）\n2. 玩家反映活动按钮", self.original)
+        self.assertNotIn("BUG-001", self.original)
 
     def test_both_editors_reject_unreadable_or_unsupported_snapshots(self):
         invalid_snapshots = ["{", "[]", json.dumps({"schema_version": 2, "suggestions": [], "sources": {}}),
@@ -128,9 +131,12 @@ class BugReviewTests(TestCase):
         text = (self.folder / "report.md").read_text(encoding="utf-8")
         self.assertIn("1 个疑似问题，涉及 2 条反馈", text)
         self.assertNotIn("BUG-001", text)
-        self.assertIn("1. **【BUG-002", text)
+        self.assertNotIn("BUG-002", text)
+        self.assertIn("1. 玩家反映活动按钮点击后无响应。", text)
+        self.assertNotIn("bug-ids", report_text(self.folder))
         self.assertFalse(result["bugs"][0]["included"])
         self.assertTrue(result["bugs"][1]["included"])
+        self.assertEqual(result["bugs"][1]["code"], "BUG-002")
         values = self.payload()
         values[1]["included"] = False
         result = self.save(values)
@@ -142,6 +148,21 @@ class BugReviewTests(TestCase):
             item["included"] = True
         self.assertFalse(self.save(values)["modified"])
         self.assertEqual((self.folder / "report.md").read_text(encoding="utf-8"), self.original)
+
+    def test_existing_report_with_legacy_bug_prefix_can_be_reviewed_and_saved(self):
+        prefix, _, suffix = bug_review._parts(self.original)
+        legacy = (bug_review.HEADING + "\n\n共整理 **1 个疑似问题，涉及 2 条反馈**。以下为玩家描述，尚需进一步核实。\n\n"
+                  "1. **【BUG-002 · 玩法相关 · 活动（许愿树）】** 玩家反映活动按钮点击后无响应。"
+                  "（相关反馈：2 条；反馈 ID：0002、0003）\n\n")
+        (self.folder / "report.md").write_text(prefix + legacy + suffix, encoding="utf-8")
+        values = self.payload()
+        self.assertFalse(values[0]["included"])
+        self.assertTrue(values[1]["included"])
+        values[1]["text"] = "活动按钮无响应。"
+        self.save(values)
+        saved = (self.folder / "report.md").read_text(encoding="utf-8")
+        self.assertIn("1. 活动按钮无响应。", saved)
+        self.assertNotIn("BUG-002", saved)
 
     def test_suggestion_edits_preserve_bug_section_and_invalidate_stale_bug_version(self):
         old_version = bug_review.summary(self.folder)["version"]

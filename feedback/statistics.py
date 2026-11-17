@@ -36,6 +36,8 @@ def build_statistics(processed, selection, config):
     thresholds = config["report"]["module_growth_thresholds"]
     modules = []
     for label in config["schema"]["labels"]:
+        if label == "BUG" and config.get("bugs_prompt"):
+            continue
         count, old = int(counts.get(label, 0)), int(old_counts.get(label, 0))
         if not count and not old:
             continue

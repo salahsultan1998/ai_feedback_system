@@ -48,6 +48,8 @@ def load_config(code, root=ROOT, prompt_overrides=None):
     config = {**load_settings(root), **read_json(folder / "settings.json")}
     config.update(game=code, name=game["name"], schema=read_json(folder / "labels.json"),
                   report=read_json(folder / "report_rules.json"))
+    if config.get("classification_source", "ai") not in {"ai", "source_label"}:
+        raise ValueError("classification_source 必须为 ai 或 source_label。")
     if config.get("candidate_source", "source_label") not in {"source_label", "ai"}:
         raise ValueError("candidate_source 必须为 source_label 或 ai。")
     for key in ("concurrency", "timeout_seconds", "max_rows", "max_report_days",
@@ -68,6 +70,17 @@ def load_config(code, root=ROOT, prompt_overrides=None):
         raise ValueError("报告长度或数量限制无效。")
     labels = config["schema"].get("labels")
     validate_labels(labels)
+    if config.get("classification_source") == "source_label":
+        if "其他" not in labels:
+            raise ValueError("按源标签分类时必须配置一级类别「其他」。")
+        source_label_modules = {}
+        for module, group in labels.items():
+            for theme in group["themes"]:
+                label = theme["name"]
+                if label in source_label_modules:
+                    raise ValueError(f"源标签「{label}」只能对应一个一级类别。")
+                source_label_modules[label] = module
+        config["source_label_modules"] = source_label_modules
     thresholds = report.get("module_growth_thresholds")
     if not isinstance(thresholds, dict) or set(thresholds) != set(labels):
         raise ValueError("module_growth_thresholds 必须为每个 I 类别配置增长率，类别名称须与分类表一致。")
@@ -84,7 +97,10 @@ def load_config(code, root=ROOT, prompt_overrides=None):
         config[name + "_prompt"] = prompt.replace("{{GAME_NAME}}", game["name"]).replace(
             "{{LABEL_SCHEMA}}", json.dumps(config["schema"], ensure_ascii=False))
         if name in {"suggestions", "issues", "bugs"}:
-            config[name + "_prompt"] += REPORT_LANGUAGE_INSTRUCTIONS
+            instructions = REPORT_LANGUAGE_INSTRUCTIONS
+            if code == "okey":
+                instructions = instructions.replace("阿拉伯语", "土耳其语").replace("阿语", "土语").replace("中阿混写", "中土混写")
+            config[name + "_prompt"] += instructions
             terminology = config["schema"].get("terminology")
             if terminology:
                 config[name + "_prompt"] += (

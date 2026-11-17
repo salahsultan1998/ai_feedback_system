@@ -422,13 +422,13 @@ function renderBugReview(detail) {
         const heading = document.createElement("div");
         heading.className = "review-item-heading";
         const identity = document.createElement("div");
-        const code = document.createElement("h3");
-        code.textContent = item.code;
+        const number = document.createElement("h3");
+        number.textContent = `${index + 1}.`;
         const module = document.createElement("p");
         module.className = "bug-review-module";
         const categories = Array.isArray(item.categories) ? item.categories.join(" / ") : item.categories;
         module.textContent = [item.label, categories].filter(Boolean).join(" · ");
-        identity.append(code, module);
+        identity.append(number, module);
         const keepLabel = document.createElement("label");
         keepLabel.className = "review-toggle";
         const included = document.createElement("input");

@@ -3,7 +3,7 @@ import json
 
 from .ai_client import cached_request, check_stop
 from .report_language import validate_report_language
-from .policies import abuse_mask, is_suggestion_label, suggestion_mask
+from .policies import abuse_mask, candidate_label_column, is_suggestion_label, suggestion_mask
 from .taxonomy import display_theme
 
 
@@ -46,7 +46,7 @@ def fragments(rows, config):
             yield {"feedback_id": str(row["反馈ID"]), "label": row["最终标签"],
                    "theme": row["具体主题"] or "未细分", "subtheme": row["三级主题"],
                    "is_suggestion": (row["是否建议"] == "是" if config.get("candidate_source") == "ai"
-                                     else is_suggestion_label(row["反馈标签"], config)),
+                                     else is_suggestion_label(row[candidate_label_column(config)], config)),
                    "text": row["中文翻译"][offset:offset + size]}
 
 

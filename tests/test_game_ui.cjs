@@ -327,7 +327,8 @@ async function testUI() {
     await b("edit-suggestions").listeners.click();
     assert.equal(bugApp.calls.length,callsBeforeOtherEditor);
     assert(b("bug-review-summary").textContent.includes("2 个问题，涉及 3 条去重反馈"),"Shared feedback IDs count once");
-    assert(bugApp.created.some(item=>item.textContent==="BUG-001"));
+    assert(bugApp.created.some(item=>item.textContent==="1."));
+    assert(!bugApp.created.some(item=>item.textContent==="BUG-001"));
     assert(bugApp.created.some(item=>item.textContent==="玩法相关 · 活动 / 许愿树"));
     change(bugFields()[0].sourceChecks[1].input,false);
     assert(b("bug-review-summary").textContent.includes("2 个问题，涉及 3 条去重反馈"));

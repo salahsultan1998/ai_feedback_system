@@ -1,0 +1,858 @@
+{
+  "game": "Okey",
+  "label_system_name": "Soho 101 Okey 反馈标签",
+  "labels": {
+    "账号问题": {
+      "themes": [
+        {
+          "name": "账号访问与安全",
+          "children": [
+            {
+              "name": "Hesap değiştirmek veya bağlamak"
+            },
+            {
+              "name": "Bağlanan hesabımı nasıl kaldırabilirim?"
+            },
+            {
+              "name": "Hızlı giriş hesabım cihaz değiştirdikten sonra girilmiyor"
+            },
+            {
+              "name": "Facebook ile giriş yapamıyorum"
+            },
+            {
+              "name": "E-posta adresiniz hesabınıza bağlandı"
+            },
+            {
+              "name": "Hesabıma giriş yapamıyorum"
+            },
+            {
+              "name": "Hotmail girişi yapılmıyor"
+            },
+            {
+              "name": "Hesabım çalındı"
+            },
+            {
+              "name": "Başka oyuncu hesabımdaki çipleri çaldı"
+            },
+            {
+              "name": "Hesap kendisine ait olduğunu kanıtlaması gerekiyor"
+            },
+            {
+              "name": "Hesabınıza zaten bir e-postası bağlanmış"
+            },
+            {
+              "name": "İkinci şifre"
+            },
+            {
+              "name": "Kişisel bilgilere erişim"
+            },
+            {
+              "name": "Hesap çip alım/ satım"
+            }
+          ],
+          "translations": {
+            "tr": "Hesap erişimi ve güvenliği"
+          }
+        },
+        {
+          "name": "个人资料与账号管理",
+          "children": [
+            {
+              "name": "Hesap silmek istiyorum"
+            },
+            {
+              "name": "İsim değiştirmek istiyorum"
+            },
+            {
+              "name": "Galeriye fotoğraf yüklemek ve kaldırmak"
+            },
+            {
+              "name": "Fotoğrafım onaylanmadı"
+            },
+            {
+              "name": "Oyuncu seviyem kaç?"
+            },
+            {
+              "name": "Oyuncu seviyemi nasıl yükseltirim?"
+            },
+            {
+              "name": "Yüklediğim fotoğraf neden kaldırıldı?"
+            },
+            {
+              "name": "Benim ID numaram nerde?"
+            },
+            {
+              "name": "Oyuncu ismim neden kaldırıldı?"
+            },
+            {
+              "name": "Hesabı gizliye alma"
+            },
+            {
+              "name": "Konum özelliği"
+            },
+            {
+              "name": "Fotoğraf onayı (Çocuklu)"
+            }
+          ],
+          "translations": {
+            "tr": "Profil ve hesap yönetimi"
+          }
+        },
+        {
+          "name": "管理员相关",
+          "children": [
+            {
+              "name": "Nasıl moderatör oluruz"
+            },
+            {
+              "name": "Moderatötlüğüm neden onaylanmadı"
+            },
+            {
+              "name": "Moderatörlüğünüz aktivleştirildi"
+            },
+            {
+              "name": "Moderatör kimliği silinmiş"
+            },
+            {
+              "name": "Moderatörlük yeniden verilmeyecektir"
+            },
+            {
+              "name": "Sohbet moderatörlük başvuru sonuçları ne zaman belirleniyecektir?"
+            },
+            {
+              "name": "Yıldız Moderatör başvurum neden reddedildi?"
+            },
+            {
+              "name": "Engel geçmişim olduğu içi moderatörlük başvurusu yapamıyorum"
+            },
+            {
+              "name": "Moderatörlüğünü zaten aktif"
+            },
+            {
+              "name": "Modluk başvuru şu anda kapalıdır"
+            },
+            {
+              "name": "Moderatörlük yüzdeliği yanlış düştü, ama ekran kanıtı göndermedi"
+            },
+            {
+              "name": "1 ay oldu hala dönüş yok"
+            }
+          ],
+          "translations": {
+            "tr": "Moderatörlük"
+          }
+        },
+        {
+          "name": "处罚、投诉与申诉",
+          "children": [
+            {
+              "name": "Oyunda şansım kötü"
+            },
+            {
+              "name": "Oyunda hile var"
+            },
+            {
+              "name": "Diğer oyuncu çip satıyor"
+            },
+            {
+              "name": "Diğer oyuncu küfür ediyor"
+            },
+            {
+              "name": "Moderatörü şikayet edince"
+            },
+            {
+              "name": "Şikayet edilen oyuncu küfür ettiği tespit edildi"
+            },
+            {
+              "name": "Diğer oyuncu hile kullanıyor"
+            },
+            {
+              "name": "Moderatörler tarafından engel getirilmiş"
+            },
+            {
+              "name": "Adminler tarafından engellenmişsiniz"
+            },
+            {
+              "name": "Sohbet engeli kaldırıldı"
+            },
+            {
+              "name": "Geri bildirimde ilk kez küfür ediyorsa"
+            },
+            {
+              "name": "Hesabınızda herhangi bir engel türü bulunmuyor"
+            },
+            {
+              "name": "Getirilen sohbet engelinin süresi bitmiştir"
+            },
+            {
+              "name": "Oyuncu diğer kişinin fotoğraflarını veya ismini kullanıyor"
+            },
+            {
+              "name": "Şikayetiniz tespit edilemedi"
+            },
+            {
+              "name": "Sohbetlerde yazdığım her içerik yıldızlanıyor"
+            },
+            {
+              "name": "Yasaklı sesli mesaj gönderildiği için banlanmıştır"
+            },
+            {
+              "name": "Engeliniz kaldırılmadıysa lütfen tekrar geri bildirimlerde bulunun"
+            },
+            {
+              "name": "Oyuncuya cevaplanmıştır ve engeli kaldırılmayacaktır"
+            },
+            {
+              "name": "Hile geçmişine rastlanmamıştır"
+            },
+            {
+              "name": "Oyuncular masada takım olarak hile yapıyorlar"
+            },
+            {
+              "name": "Paramı aldı çip göndermedi, dolandırdı"
+            },
+            {
+              "name": "Hile yapan oyuncular tespit edildi"
+            },
+            {
+              "name": "Arkadaşıma engel getirildi"
+            },
+            {
+              "name": "Ana hesap banlandı"
+            },
+            {
+              "name": "Yasak olduğunu bilmiyordum"
+            },
+            {
+              "name": "Otomatik hile"
+            },
+            {
+              "name": "Sadece küfürler değil"
+            },
+            {
+              "name": "Engel tarihi öğrenmek istiyorsa"
+            },
+            {
+              "name": "Yasaklı görsel paylaşımı"
+            }
+          ],
+          "translations": {
+            "tr": "Yaptırım, şikâyet ve itiraz"
+          }
+        }
+      ],
+      "translations": {
+        "tr": "Hesap sorunları"
+      }
+    },
+    "金币相关": {
+      "themes": [
+        {
+          "name": "购买与支付",
+          "children": [
+            {
+              "name": "Oyuncu detaylı dekont göndermedi"
+            },
+            {
+              "name": "Oyuncunun satın alımları gerçekleşmemiş"
+            },
+            {
+              "name": "Oyuncunun satın alımları hesabına başarılı yüklenmiş"
+            },
+            {
+              "name": "Oyuncunun siparişi yüklenmemiş, satın alımlarını posta yoluyla gönderdik."
+            },
+            {
+              "name": "Oyuncu çip satın almayı bilmiyor"
+            },
+            {
+              "name": "Oyuncu detaylı bilgilerini göndermedi"
+            },
+            {
+              "name": "Oyuncu çip satın alamıyor"
+            },
+            {
+              "name": "Gönderilen dekont fotoğrafın kalitesi çok düşük"
+            },
+            {
+              "name": "Sistemden çip alamıyorum, ülkeyi doğru seçin diyor"
+            },
+            {
+              "name": "Çiplerimi iade etmek istiyorum"
+            },
+            {
+              "name": "Bilgim dışında hesabımdan para çekilmiş"
+            }
+          ],
+          "translations": {
+            "tr": "Satın alma ve ödeme"
+          }
+        },
+        {
+          "name": "VIP 与 SVIP",
+          "children": [
+            {
+              "name": "VIP satın aldım ama çip gelmedi"
+            },
+            {
+              "name": "VIP üyeliği nasıl iptal edilir"
+            },
+            {
+              "name": "Nasıl VIP olurum"
+            },
+            {
+              "name": "VIP olduğuma rağmen diğer oyuncuların taşlarını göremiyorum"
+            },
+            {
+              "name": "VIP iki kez ücret kesiyor"
+            },
+            {
+              "name": "VIP satın almama rağmen VIP seviyesi yükselmiyor"
+            },
+            {
+              "name": "SVIP ayrıcalıkları"
+            }
+          ],
+          "translations": {
+            "tr": "VIP ve SVIP"
+          }
+        },
+        {
+          "name": "金币转账与限额",
+          "children": [
+            {
+              "name": "Oyun arkadaşlarına nasıl hediye çip gönderilir"
+            },
+            {
+              "name": "Postadaki çip ve hediyeleri alma ve saklama süresi"
+            },
+            {
+              "name": "Çip gönderme limiti açıldı"
+            },
+            {
+              "name": "Çip gönderme limiti kalacaktır"
+            },
+            {
+              "name": "Yanlış hesaba hediye çip gönderdim, geri iade istiyorum"
+            },
+            {
+              "name": "Gönderilen çip gelmedi/gitmedi"
+            },
+            {
+              "name": "Hediyeler geçmişi nasıl silinir?"
+            },
+            {
+              "name": "Hesabınızda çip gönderme limiti bulunmuyor"
+            },
+            {
+              "name": "Arkadaşım hediye gönderemiyor"
+            },
+            {
+              "name": "Gecikmeli Çip"
+            },
+            {
+              "name": "Çip Kontrolü"
+            },
+            {
+              "name": "Hediye/Çip/Kutu sistem kontrol"
+            },
+            {
+              "name": "Yüksek riskli hesap"
+            },
+            {
+              "name": "Hediye Çip Kartları"
+            }
+          ],
+          "translations": {
+            "tr": "Çip transferi ve limitler"
+          }
+        },
+        {
+          "name": "金币与奖励余额",
+          "children": [
+            {
+              "name": "Oyuncu çip akışında sorun yok"
+            },
+            {
+              "name": "Oyuncu detaylı bilgileri göndermedi"
+            },
+            {
+              "name": "Ücretsiz alanda çip vermiyor"
+            },
+            {
+              "name": "Ücretsiz alanda nasıl oynanır"
+            },
+            {
+              "name": "Oyunda nasıl ücretsiz çip alabilirsiniz"
+            },
+            {
+              "name": "Size direk çip hediye edemeyiz"
+            },
+            {
+              "name": "Harcadığınız çipleri geri ödemeyiz"
+            },
+            {
+              "name": "Hediye kodu nasıl alınır?"
+            },
+            {
+              "name": "Oyunda nasıl hediye gönderilir"
+            },
+            {
+              "name": "Hediyeyi çiplere nasıl dönüştürebilirim"
+            },
+            {
+              "name": "Beğeni çipler nasıl alınır ve verilir"
+            },
+            {
+              "name": "Oyundayken sistem güncellemeye başladı ve çiplerimi kaybettim"
+            },
+            {
+              "name": "Kaybeden çip neden kazanılan çipten daha çok?"
+            },
+            {
+              "name": "Kazandığım çip hesabıma gelmedi"
+            },
+            {
+              "name": "Seviye yükseltme ödüllü"
+            },
+            {
+              "name": "Başarılarım kısmında görünen ödüllerim gelmedi"
+            }
+          ],
+          "translations": {
+            "tr": "Çip ve ödül bakiyesi"
+          }
+        }
+      ],
+      "translations": {
+        "tr": "Çip ile ilgili"
+      }
+    },
+    "Social相关": {
+      "themes": [
+        {
+          "name": "俱乐部",
+          "children": [
+            {
+              "name": "Klan hakkında bilgi verir misiniz?"
+            },
+            {
+              "name": "Klandan nasıl çıkış yapılır?"
+            },
+            {
+              "name": "Klanım kapandı, geri açabilir misiniz?"
+            },
+            {
+              "name": "Klan liderliği neden otomatik kalkar"
+            },
+            {
+              "name": "Klan yarışmasına arkadaşı nasıl davet ederim"
+            },
+            {
+              "name": "Klan ismi / açıklaması / sembolü nasıl değişir?"
+            },
+            {
+              "name": "Ek klana üye alma"
+            },
+            {
+              "name": "Klanda toplu mesaj atma"
+            },
+            {
+              "name": "Ek klan nedir?"
+            },
+            {
+              "name": "Batak Eğlence Maçı"
+            }
+          ],
+          "translations": {
+            "tr": "Klan"
+          }
+        },
+        {
+          "name": "语聊房",
+          "children": [
+            {
+              "name": "Çipler inciye nasıl dönüştürülür"
+            },
+            {
+              "name": "Sesli Sohbetlerde gönderilen hediyelerim nerde"
+            },
+            {
+              "name": "Sesli sohbetlerde mikrofonum çalışmıyor"
+            },
+            {
+              "name": "Ekrana gelen hediye animasyonu rahatsız ediyor"
+            },
+            {
+              "name": "Denizaltı hazinesi nasıl alınır?"
+            },
+            {
+              "name": "Sohbet odasına nasıl girebilirim/çıkabilirim"
+            },
+            {
+              "name": "Sesli sohbet odasından çıkartılıyorum"
+            },
+            {
+              "name": "Sesli oda arka plan değiştirme"
+            },
+            {
+              "name": "Müzik açamıyorum"
+            },
+            {
+              "name": "Sohbet odası şifresi"
+            },
+            {
+              "name": "Sohbet Odası kapatma"
+            }
+          ],
+          "translations": {
+            "tr": "Sohbet odası"
+          }
+        },
+        {
+          "name": "好友与聊天",
+          "children": [
+            {
+              "name": "Engellenen oyuncuları nasıl bulabiliriz?"
+            },
+            {
+              "name": "Diğer oyuncu nasıl engellenir"
+            },
+            {
+              "name": "Masaya nasıl davet edebiliriz"
+            },
+            {
+              "name": "Davete nasıl gidilir"
+            },
+            {
+              "name": "Diğer oyuncular ile nasıl sohbet edilir"
+            },
+            {
+              "name": "Sesli mesaj nasıl gönderilir"
+            },
+            {
+              "name": "Masada özel sohbet"
+            },
+            {
+              "name": "Mesajlar nasıl silinir"
+            },
+            {
+              "name": "Özel sohbet nasıl kapatılır"
+            },
+            {
+              "name": "Nasıl arkadaş ekleniyor"
+            },
+            {
+              "name": "Arkadaş listem nerde?"
+            },
+            {
+              "name": "Oyuncuların çevrimiçi durumu nasıl gözükür"
+            },
+            {
+              "name": "Gelen mesajlar gözükmüyor"
+            },
+            {
+              "name": "Silinen arkadaşları bulma"
+            },
+            {
+              "name": "Yarışma modunda sohbet alanının bulunmaması"
+            }
+          ],
+          "translations": {
+            "tr": "Arkadaşlık ve sohbet"
+          }
+        },
+        {
+          "name": "动态与粉丝团",
+          "children": [
+            {
+              "name": "Gonderiyi yanlislikla begendim, onu geri nasil iptal edebilirim?"
+            },
+            {
+              "name": "Gönderiye yapılan yorumu nasıl silerim"
+            },
+            {
+              "name": "Gönderim neden onaylanmıyor (onaylanmadı)"
+            },
+            {
+              "name": "Fan Kulubu Oluştur"
+            },
+            {
+              "name": "Fan kulübü katılma"
+            },
+            {
+              "name": "Fan rozet kullanma"
+            },
+            {
+              "name": "Fan kulübü silme"
+            },
+            {
+              "name": "Fotoğraf/Gönderi onaylanmıyor"
+            },
+            {
+              "name": "Kendi gönderisine yapılan yorum"
+            },
+            {
+              "name": "Yorum yapamıyorum"
+            }
+          ],
+          "translations": {
+            "tr": "Gönderi ve fan kulübü"
+          }
+        }
+      ],
+      "translations": {
+        "tr": "Sosyal"
+      }
+    },
+    "玩法相关": {
+      "themes": [
+        {
+          "name": "Okey及桌游",
+          "children": [
+            {
+              "name": "Taşları sistem tarafından rastgele dağıtılır"
+            },
+            {
+              "name": "Eşli mod nasıl oynanır"
+            },
+            {
+              "name": "Katlamasız mod nasıl oynanır"
+            },
+            {
+              "name": "Katlamalı mod nasıl oynanır"
+            },
+            {
+              "name": "Yardımsız mod nasıl oynanır"
+            },
+            {
+              "name": "101 Okey oynamayı bilmiyorum"
+            },
+            {
+              "name": "Puan sonucu hesaplaması"
+            },
+            {
+              "name": "Elle taş nasıl işlenir"
+            },
+            {
+              "name": "Yıldızlar masasında nasıl oynanır"
+            },
+            {
+              "name": "El nasıl açılır"
+            },
+            {
+              "name": "Tek seferde aynı yere sadece 2 taş işlenebilir"
+            },
+            {
+              "name": "Seri açtıktan sonra çift taşlar nasıl işlenir"
+            },
+            {
+              "name": "Taş hesaplama göstergeri nedir"
+            },
+            {
+              "name": "Satın alan oyuncular için ayrıcalık"
+            },
+            {
+              "name": "El açma efektini nasıl kullanılır?"
+            },
+            {
+              "name": "Fotoğraf çerçevesi nasıl kullanılır?"
+            },
+            {
+              "name": "Tavla nasıl oynanır?"
+            },
+            {
+              "name": "Neden puan hesaplamam iki katlanıyor"
+            },
+            {
+              "name": "Yeni oyun modu"
+            },
+            {
+              "name": "Okey ve Batak arasında geçiş"
+            },
+            {
+              "name": "Elden bitme"
+            },
+            {
+              "name": "Süper Okey"
+            },
+            {
+              "name": "Batakta şansım kötü"
+            }
+          ],
+          "translations": {
+            "tr": "Okey ve masa oyunları"
+          }
+        },
+        {
+          "name": "欢乐合集",
+          "children": [
+            {
+              "name": "Çalkantılı yarışta çiplerin akışında sorun bulunmuyor"
+            },
+            {
+              "name": "Çalkantılı yarışta ödül dağıtımı randomdur"
+            },
+            {
+              "name": "Şanslı oyuncu nasıl seçilir"
+            },
+            {
+              "name": "Çalkantılı yarışta ödül havuzu nasıl alınır"
+            },
+            {
+              "name": "Define avı nasıl oynanır?"
+            },
+            {
+              "name": "Define avında şansım kötü"
+            },
+            {
+              "name": "Haydi Balığa oyunu nasıl oynanır?"
+            },
+            {
+              "name": "Çalkantılı Yarışta sözleşme yapmadığım halde çiplerim kayboluyor"
+            },
+            {
+              "name": "Haydi Balığa oyununda hep kaybediyorum"
+            },
+            {
+              "name": "Uzay yolculuğu oyununda şansım kötü"
+            },
+            {
+              "name": "Define avında hep aynı kişiler kazanıyor"
+            },
+            {
+              "name": "Çip Diyarı Kayıp Limiti olmasını istemiyorum"
+            },
+            {
+              "name": "Define avı durdurma özelliği"
+            },
+            {
+              "name": "Oyun Modları"
+            },
+            {
+              "name": "Rulet kapatıldı"
+            },
+            {
+              "name": "Çaylak 4 otomatik açılır"
+            },
+            {
+              "name": "Çip diyarı sıralama kartları"
+            }
+          ],
+          "translations": {
+            "tr": "Çip Diyarı"
+          }
+        },
+        {
+          "name": "活动与赛事",
+          "children": [
+            {
+              "name": "Yarışmada oyunu kazandığıma rağmen eleniyorum"
+            },
+            {
+              "name": "Yarışma masasına nasıl katılırız?"
+            },
+            {
+              "name": "Giriş biletleri nasıl kullanılır?"
+            },
+            {
+              "name": "Yarışmadan nasıl çıkılır?"
+            },
+            {
+              "name": "Etkinlikte kazanma şansım kötü"
+            },
+            {
+              "name": "Çip Karnavalı"
+            },
+            {
+              "name": "Bonus İsteği"
+            },
+            {
+              "name": "Etkinlik sona erdi"
+            },
+            {
+              "name": "Jeton Turnuvası / Yarışma"
+            }
+          ],
+          "translations": {
+            "tr": "Etkinlik ve yarışmalar"
+          }
+        }
+      ],
+      "translations": {
+        "tr": "Oynanış"
+      }
+    },
+    "其他": {
+      "themes": [
+        {
+          "name": "建议与一般支持",
+          "children": [
+            {
+              "name": "Oyuncu öneri yaptığı zaman"
+            },
+            {
+              "name": "İlgili birime iletildi, sonuç bekleniyor"
+            }
+          ],
+          "translations": {
+            "tr": "Öneri ve genel destek"
+          }
+        },
+        {
+          "name": "信息不完整",
+          "children": [
+            {
+              "name": "Yaşadığınız sorunları daha detaylı tarif ediniz"
+            },
+            {
+              "name": "Lütfen ekran görüntüsü alarak bize gönderiniz"
+            },
+            {
+              "name": "Resmi instagramdan Facebooktan görüntüsü veya video gönderin"
+            },
+            {
+              "name": "Sorun bildir"
+            }
+          ],
+          "translations": {
+            "tr": "Eksik bilgi"
+          }
+        }
+      ],
+      "translations": {
+        "tr": "Diğer"
+      }
+    },
+    "BUG": {
+      "themes": [
+        {
+          "name": "BUG",
+          "children": [
+            {
+              "name": "İnternet bağlantım kesiliyor"
+            },
+            {
+              "name": "Sesli Sohbet Odası daveti istemiyorum"
+            },
+            {
+              "name": "Hata en kısa sürede düzenlenecektir"
+            },
+            {
+              "name": "Hata son güncelleme ile düzeltildi"
+            },
+            {
+              "name": "Oyunumuzu kaldırarak tekrar indirmeyi deneyiniz"
+            },
+            {
+              "name": "Hata kodu 1 (kanala giremiyorum)"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "exclusion_reasons": [
+    "含辱骂内容"
+  ]
+}

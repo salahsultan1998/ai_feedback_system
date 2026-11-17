@@ -1,6 +1,6 @@
 # AI 反馈统计
 
-Game-feedback reporting app: import feedback, translate and classify it, compare periods, review the report, and optionally push it to Feishu. Baloot and 新疆 are configured; Okey has a placeholder page.
+Game-feedback reporting app for Baloot, Okey and 新疆: import feedback, translate and classify it, compare periods, review the report, and optionally push it to Feishu.
 
 ## Run
 
@@ -29,7 +29,7 @@ Follow [the single-server deployment guide](deploy/README.md) for Gunicorn, syst
 
 ## Use the app
 
-1. Select Baloot or 新疆 and upload CSV or `.xlsx`. Only the first Excel sheet is read. The preview includes rows that will later be excluded.
+1. Select a game and upload CSV or `.xlsx`. Only the first Excel sheet is read. The preview includes rows that will later be excluded.
 2. Select inclusive dates. October 19–22 compares with October 12–15, exactly seven days earlier. Only records in either period enter AI processing; overlapping records are processed once and counted in each applicable period.
 3. Check the counts and coverage warning. If the export does not span both periods, generation requires confirmation that it is complete and the missing boundary dates truly had no feedback. Days without records alone do not prove an incomplete export.
 4. Generate the report. **Stop** lets in-flight requests finish and saves successful results. Retry the same upload to reuse them. Every selected record must finish successfully before a report is exported.
@@ -49,7 +49,7 @@ Already downloaded files and Feishu messages/sheets are not deleted. Feishu dupl
 - IDs remain strings, including leading zeros. Empty IDs/text, invalid dates, ignored source labels and duplicate IDs are excluded; the first valid instance of an ID is retained. Different IDs with identical text remain separate records. `ignored_labels` matching ignores case.
 - Dates follow source-system local time. Uniform timezone offsets retain wall-clock dates; mixed timezone formats must be normalized before upload.
 - AI returns a Chinese translation, a strict validity decision and one validated I/II/III category path. Python computes counts, shares and period changes. Short, understandable feedback remains valid. Unclear feedback is excluded from statistics and preserved with its reason in **排除反馈明细**. Feedback containing actual abuse is excluded in full from analysis, statistics and every Excel sheet; its processing decision remains cached for retries.
-- For games using the default `candidate_source: "source_label"` (including Baloot), suggestion and BUG candidates come only from valid current-period rows whose original `反馈标签`, after trimming, exactly matches `suggestion_labels` or `bug_labels`. Matching is case-sensitive; Baloot uses `["建议"]` and `["BUG"]`. The player-selected tag and any model-supplied suggestion flag do not control candidacy.
+- For Baloot, suggestion and BUG candidates come only from valid current-period rows whose original `反馈标签`, after trimming, exactly matches `suggestion_labels` or `bug_labels`. Matching is case-sensitive; Baloot uses `["建议"]` and `["BUG"]`. The player-selected tag and any model-supplied suggestion flag do not control candidacy.
 - Suggestions merge equivalent requests within one I category and retain their supporting feedback IDs. BUG analysis merges equivalent malfunctions only within the same complete category path, retaining every recognized issue and contributor without a top-N cutoff. Both pools are independent of module growth thresholds; no candidates means no corresponding analysis requests.
 - The report contains an overview, evidence-linked suggestions, suspected BUGs when enabled, and module statistics. Report text is Chinese; original-language source text remains available in the review editor and detail exports. Suggestions, BUGs and issue analysis cite **feedback IDs**.
 - Excel contains **本期反馈明细** and **上周同期反馈明细**, plus the excluded sheet when needed. Its nine valid-detail columns retain IDs, source text, translation and other detail fields. I/II/III paths appear in two category columns, for example `玩法相关 | 活动（许愿树）`. Statistics aggregate by I category. Source labels and the internal suggestion flag are omitted from new exports.
@@ -70,7 +70,7 @@ New reports preserve immutable originals in `report.original.md` and evidence in
 
 Global settings are overridden by `config/<game>/settings.json`. `OPENROUTER_MODEL` overrides the configured model. Game owners can edit prompt text from the game's **配置** tab.
 
-1. Set `FEEDBACK_PROMPT_PASSWORD_BALOOT` and `FEEDBACK_PROMPT_PASSWORD_XINJIANG` in the local `.env` or the server environment file. Generate a different value for each game with `python3 -c 'import secrets; print(secrets.token_urlsafe(24))'` and restart the app. A game without a password shows its prompts read-only.
+1. Set the game's `FEEDBACK_PROMPT_PASSWORD_<GAME>` (for example, `FEEDBACK_PROMPT_PASSWORD_OKEY`) in the local `.env` or the server environment file. Generate a different value for each game with `python3 -c 'import secrets; print(secrets.token_urlsafe(24))'` and restart the app. A game without a password shows its prompts read-only.
 2. Open the game, select **配置**, choose a prompt, and save it with the game's password. **恢复上一版** loads the prior text for review. Save to make it active.
 3. The app creates `prompts.sqlite3` automatically under `FEEDBACK_STORAGE` (`storage/` locally by default). Keep this file when updating the code. Saved text takes precedence over the repository default, and each report uses the prompt text loaded when the job starts.
 
@@ -115,6 +115,14 @@ Initial Xinjiang settings are four concurrent classification requests, ten recor
 The Xinjiang bot and spreadsheet sync are enabled; supply `FEISHU_XINJIANG_WEBHOOK`, `FEISHU_APP_ID_XINJIANG` and `FEISHU_APP_SECRET_XINJIANG` in the environment. The destination Wiki link is configured in `feishu.spreadsheet.url`; the app resolves its underlying sheet token through the Wiki API. Grant the Xinjiang application Wiki node read access and editing access to that spreadsheet. A verified `spreadsheet_token` can also be supplied to skip Wiki resolution.
 
 The supplied 2026-11-10 feedback workbook contains 40 records dated **2026-11-08** and no previous-week records. A report for that day cannot establish a valid week-over-week comparison without the earlier export. Use the existing complete-export confirmation only if you have verified that the absent period really had no feedback; otherwise supply the missing data.
+
+## Okey
+
+Okey keeps a backend `反馈标签` when it matches a standard II category in the label workbook. For blank or legacy labels, AI matches the feedback to a standard II category, using `信息不完整` when the text gives too little information. The configured taxonomy determines the I category. Source labels `重复反馈` and `无效反馈` are excluded at import processing.
+
+AI translates Turkish feedback into Chinese and may choose a matching Turkish III theme within the fixed II category. Unclear content still counts, and actual abuse is excluded. The final standard II categories `建议与一般支持` and `BUG` define candidates for the existing suggestion and malfunction review workflows.
+
+To enable Feishu later, set `feishu.enabled` to `true` in `config/okey/settings.json` and supply `FEISHU_OKEY_WEBHOOK` in the environment. For detail sync, also set `feishu.spreadsheet.enabled` to `true`, fill in `feishu.spreadsheet.url`, and supply `FEISHU_APP_ID_OKEY` and `FEISHU_APP_SECRET_OKEY`. See the destination access and connection check below (use `--check okey`).
 
 ## Feishu
 

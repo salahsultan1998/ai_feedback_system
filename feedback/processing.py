@@ -34,12 +34,28 @@ label 为 I 类别，theme 为 II 类别，subtheme 为 theme.children 中的 II
 {"results":[{"feedback_id":"原样的字符串 ID","translation_zh":"简体中文翻译","label":"I 类别或空字符串","theme":"II 类别或空字符串","subtheme":"III 类别或空字符串","is_valid":true,"exclusion_reason":""}]}
 """
 
+SOURCE_LABEL_BATCH_INSTRUCTIONS = """
+
+输入为 JSON 对象，feedbacks 数组中的每项包含 feedback_id、feedback、original_label。
+独立处理每项，原样返回 feedback_id 字符串（包括前导零），每项恰好返回一次。
+将原文翻译为简体中文。短句、没有明确诉求或无法理解的内容仍为有效；无法翻译时如实标注，不编造原意。
+仅当玩家实际使用辱骂语言时，返回 is_valid=false、exclusion_reason="含辱骂内容"、theme=""、subtheme=""。单纯举报别人辱骂不属此类。
+其余一律返回 is_valid=true、exclusion_reason=""。is_valid 必须为布尔值。
+original_label 是后台标签。如果它已在标准表中，二级标签以后台为准，theme 可以留空。
+后台标签为空或不在标准表时，结合原文和旧标签含义，返回最贴近的一个标准二级标签作为 theme，必须逐字使用标准名称。实在无法判断时选“信息不完整”。
+只可从最终二级标签对应的 children 中原样选择一个三级主题作为 subtheme；无可靠匹配时留空。一级和候选筛选由系统确定。
+只返回以下 JSON 对象：
+{"results":[{"feedback_id":"原样的字符串 ID","translation_zh":"简体中文翻译","theme":"需要补匹配时填标准二级标签，否则可留空","subtheme":"三级主题或空字符串","is_valid":true,"exclusion_reason":""}]}
+"""
+
 
 def result_columns(config):
     return {**RESULT_COLUMNS, **({"is_bug": "是否疑似BUG"} if config.get("candidate_source") == "ai" else {})}
 
 
 def batch_instructions(config):
+    if config.get("classification_source") == "source_label":
+        return SOURCE_LABEL_BATCH_INSTRUCTIONS
     if config.get("candidate_source") != "ai":
         return BATCH_INSTRUCTIONS
     return BATCH_INSTRUCTIONS.replace(
@@ -49,23 +65,53 @@ def batch_instructions(config):
               '"is_valid":true,"exclusion_reason":"","is_suggestion":false,"is_bug":false}')
 
 
+def source_classification(original_label, matched_theme, subtheme, config):
+    modules = config["source_label_modules"]
+    theme = original_label.strip()
+    if theme not in modules:
+        theme = matched_theme.strip() if isinstance(matched_theme, str) else ""
+        if theme not in modules:
+            raise ValueError("后台标签不在标准表内，模型须返回一个标准二级标签。")
+    label = modules[theme]
+    try:
+        validate_path(label, theme, subtheme, config["schema"])
+    except ValueError:
+        # A suggested child outside the fixed backend category is not a classification.
+        subtheme = ""
+    return label, theme, subtheme
+
+
 def validate_result(result, config, original_label=""):
-    if not isinstance(result, dict) or any(not isinstance(result.get(k), str) for k in ("translation_zh", "label", "theme", "subtheme", "exclusion_reason")):
-        raise ValueError("模型必须返回翻译、三层分类和排除原因字符串。")
+    from_source = config.get("classification_source") == "source_label"
+    fields = ("translation_zh", "subtheme", "exclusion_reason")
+    if not from_source:
+        fields += ("label", "theme")
+    if not isinstance(result, dict) or any(not isinstance(result.get(k), str) for k in fields):
+        category = "三级主题" if from_source else "三层分类"
+        raise ValueError(f"模型必须返回翻译、{category}和排除原因字符串。")
     if type(result.get("is_valid")) is not bool:
         raise ValueError("是否有效必须为布尔值。")
-    translation, label, theme, subtheme = (result[k].strip() for k in ("translation_zh", "label", "theme", "subtheme"))
+    translation = result["translation_zh"].strip()
+    subtheme = result["subtheme"].strip()
     reason = result["exclusion_reason"].strip()
     if not translation:
         raise ValueError("模型翻译为空。")
+    if from_source:
+        label, theme, subtheme = (source_classification(original_label, result.get("theme"), subtheme, config)
+                                  if result["is_valid"] else ("", "", ""))
+        reasons = [ABUSE_REASON]
+    else:
+        label, theme = result["label"].strip(), result["theme"].strip()
+        reasons = config["schema"].get("exclusion_reasons", EXCLUSION_REASONS)
     if result["is_valid"]:
-        validate_path(label, theme, subtheme, config["schema"])
+        if not from_source:
+            validate_path(label, theme, subtheme, config["schema"])
         if reason:
             raise ValueError("有效反馈的排除原因必须为空。")
-    elif label or theme or subtheme or reason not in config["schema"].get("exclusion_reasons", EXCLUSION_REASONS):
+    elif label or theme or subtheme or reason not in reasons:
         raise ValueError("无效反馈须有合法排除原因，三层分类必须全部为空。")
     checked = {"translation_zh": translation, "label": label, "theme": theme, "subtheme": subtheme,
-            "is_suggestion": result["is_valid"] and is_suggestion_label(original_label, config),
+            "is_suggestion": result["is_valid"] and is_suggestion_label(theme if from_source else original_label, config),
             "is_valid": result["is_valid"], "exclusion_reason": reason}
     if config.get("candidate_source") == "ai":
         for field in ("is_suggestion", "is_bug"):
@@ -82,6 +128,9 @@ def validate_cached_result(row, config):
             raise ValueError("旧结果缺少有效性或建议判断，需要按新规则处理。")
         value[field] = value[field] == "是"
     checked = validate_result(value, config, row.get("反馈标签", ""))
+    if config.get("classification_source") == "source_label" and any(
+            value[field] != checked[field] for field in ("label", "theme", "subtheme")):
+        raise ValueError("旧分类与源标签不一致，需要按新规则处理。")
     if value["is_suggestion"] != checked["is_suggestion"]:
         raise ValueError("旧建议判断与原标签不一致，需要按新规则处理。")
     if config.get("candidate_source") == "ai" and value["is_bug"] != checked["is_bug"]:
@@ -94,6 +143,8 @@ def fingerprint(row, config):
                str(row["反馈ID"]), str(row["用户自己填写的内容"]), str(row["反馈标签"])]
     if config.get("candidate_source") == "ai":
         content.extend(["ai-candidates-v1", batch_instructions(config)])
+    if config.get("classification_source") == "source_label":
+        content.extend(["source-label-classification-v1", SOURCE_LABEL_BATCH_INSTRUCTIONS])
     return hashlib.sha256(json.dumps(content, ensure_ascii=False).encode()).hexdigest()
 
 
