@@ -141,4 +141,4 @@
 </main>
 {% endif %}
 {% endblock %}
-{% block scripts %}{% if game.enabled %}<script src="{{ url_for('static', filename='js/game.js') }}" defer></script><script src="{{ url_for('static', filename='js/project-config.js') }}" defer></script>{% endif %}{% endblock %}
+{% block scripts %}{% if game.enabled %}<script src="{{ url_for('static', filename='js/game.js') }}" defer></script><script src="{{ url_for('static', filename='js/term-grid.js') }}" defer></script><script src="{{ url_for('static', filename='js/project-config.js') }}" defer></script>{% endif %}{% endblock %}

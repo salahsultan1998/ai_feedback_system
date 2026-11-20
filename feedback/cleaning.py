@@ -1,4 +1,6 @@
 """Exclude invalid feedback while retaining an explanation for every exclusion."""
+import re
+
 import pandas as pd
 
 
@@ -21,7 +23,13 @@ def clean_feedback(raw, config):
     def exclude(mask, reason):
         reasons.loc[mask & reasons.eq("")] = reason
 
-    exclude(data["反馈标签"].str.casefold().isin({s.casefold() for s in config["ignored_labels"]}), "源标签排除")
+    ignored = {s.casefold() for s in config["ignored_labels"]}
+    labels = data["反馈标签"].str.casefold()
+    if config.get("game") == "xinjiang":
+        ignored_rows = labels.map(lambda value: any(tag.strip() in ignored for tag in re.split(r"[,，]", value)))
+    else:
+        ignored_rows = labels.isin(ignored)
+    exclude(ignored_rows, "源标签排除")
     exclude(data["反馈ID"].eq(""), "反馈ID为空")
     exclude(data["用户自己填写的内容"].eq(""), "反馈内容为空")
     dates = parse_dates(data["反馈时间"])

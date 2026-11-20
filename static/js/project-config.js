@@ -19,9 +19,15 @@
     };
     const termFields = {
         definition: "定义", ar_variants: "阿语说法", translation_notes: "翻译说明",
-        ug_official: "维语正式说法", ug_colloquial: "维语常用说法",
+        ug_official: "维语正式说法", ug_colloquial: "维语常用说法", tr_variants: "土语说法",
+    };
+    const projectTermFields = {
+        baloot: ["ar_variants", "definition", "translation_notes"],
+        xinjiang: ["ug_official", "ug_colloquial", "definition"],
+        okey: ["tr_variants", "definition"],
     };
     let state, draft, groups, terms, changed = false, busy = false, expiry;
+    let termBatch = null;
 
     function el(tag, text, className) {
         const node = document.createElement(tag);
@@ -41,14 +47,22 @@
         node.classList.toggle("failed", failed);
     }
     function dirty() {
-        return changed;
+        return changed || pendingTerms();
+    }
+    function pendingTerms() {
+        return Boolean(termBatch?.grid.dirty() && termBatch.grid.rows().some(row => row.some(cell => cell.trim())));
     }
     function touch() {
         changed = true;
         save.disabled = busy;
     }
+    function setBusy(value) {
+        busy = value;
+        form.inert = navigation.inert = value;
+    }
     function clear() {
         clearTimeout(expiry);
+        termBatch = null;
         state = draft = groups = terms = null;
         changed = false;
         promptConfig = null;
@@ -68,6 +82,7 @@
         lockScreen(true, "解锁已过期，请重新输入项目密码");
     }
     function setDraft(value) {
+        termBatch = null;
         draft = structuredClone(value);
         groups = Object.entries(draft.schema.labels).map(([name, data]) => ({
             name, data, threshold: draft.report.module_growth_thresholds[name] ?? 0.3,
@@ -90,7 +105,7 @@
     }
     async function refresh() {
         if (busy) return;
-        busy = true;
+        setBusy(true);
         status("正在读取配置");
         try {
             const result = await api(url);
@@ -98,7 +113,7 @@
             show(result);
         } catch (failure) {
             lockScreen(true, failure.message);
-        } finally { busy = false; }
+        } finally { setBusy(false); }
     }
     function input(label, value, update, options = {}) {
         const wrapper = el("label", undefined, "config-field");
@@ -211,6 +226,114 @@
             return panel;
         });
     }
+    function renderTermBatch() {
+        if (termBatch) return termBatch.container;
+        const container = el("details", undefined, "term-batch");
+        container.open = true;
+        container.append(el("summary", "批量添加术语"));
+        const panel = el("div", undefined, "config-list");
+        panel.append(el("p", "从 Excel 复制数据行并粘贴到表格。每行一条术语，多种说法可在同一单元格内换行", "muted small"));
+        const columns = [{key: "name", label: "术语名称"},
+            ...(projectTermFields[workspace.dataset.game] || ["definition"]).map(key => ({key, label: termFields[key]}))];
+        const gridHost = el("div");
+        const message = el("p", undefined, "small term-batch-message");
+        message.setAttribute("role", "status");
+        const preview = el("div", undefined, "config-list");
+        let plan = null;
+        function messageText(text, failed = false) {
+            message.textContent = text;
+            message.classList.toggle("failed", failed);
+        }
+        function invalidate() {
+            plan = null;
+            preview.replaceChildren();
+            messageText("");
+        }
+        const grid = window.createTermGrid(gridHost, {columns, onChange: invalidate,
+            showError: text => messageText(text, true)});
+        function describe(data) {
+            return Object.entries(data).map(([key, value]) =>
+                `${termFields[key] || key}：${Array.isArray(value) ? value.join("、") : value}`).join("\n") || "未填写说明";
+        }
+        const check = button("检查并预览", () => {
+            invalidate();
+            try {
+                const existing = named(terms, "已有术语", item => item.data);
+                const entries = grid.rows().map((row, index) => {
+                    const values = row.map(value => value.trim());
+                    if (!values.some(Boolean)) return null;
+                    if (!values[0] || reserved.has(values[0])) throw new Error(`第 ${index + 1} 行请填写有效的术语名称`);
+                    const data = {};
+                    for (const [offset, column] of columns.slice(1).entries()) {
+                        const value = values[offset + 1];
+                        if (value) data[column.key] = column.key.endsWith("variants") || column.key.endsWith("notes") ?
+                            [...new Set(value.split(/\r?\n/).map(text => text.trim()).filter(Boolean))] : value;
+                    }
+                    return {name: values[0], data};
+                }).filter(Boolean);
+                if (!entries.length) throw new Error("请先填写或粘贴术语");
+                named(entries, "本批术语", item => item.data);
+                const conflicts = entries.filter(item => Object.hasOwn(existing, item.name));
+                const decisions = new Map();
+                for (const item of conflicts) {
+                    const card = el("section", undefined, "term-conflict");
+                    card.append(el("h3", item.name));
+                    const comparison = el("div", undefined, "config-grid");
+                    for (const [title, data] of [["现有内容", existing[item.name]], ["本次内容", item.data]]) {
+                        const side = el("div");
+                        side.append(el("strong", title), el("p", describe(data)));
+                        comparison.append(side);
+                    }
+                    card.append(comparison);
+                    const label = el("label", undefined, "config-field");
+                    const select = el("select", undefined, "prompt-input");
+                    select.setAttribute("aria-label", `同名术语「${item.name}」的处理`);
+                    for (const [value, title] of [["keep", "保留现有内容"], ["merge", "合并两份内容"], ["replace", "用本次内容覆盖"]]) {
+                        select.append(new Option(title, value));
+                    }
+                    label.append(el("span", `同名术语「${item.name}」的处理`), select);
+                    decisions.set(item.name, select);
+                    card.append(label);
+                    preview.append(card);
+                }
+                const snapshot = JSON.stringify(terms);
+                plan = {entries, decisions, snapshot};
+                const apply = button("加入配置草稿", () => {
+                    if (!plan) return;
+                    if (busy || JSON.stringify(terms) !== plan.snapshot) {
+                        messageText("术语草稿已变化，请重新检查后再加入", true);
+                        return;
+                    }
+                    for (const item of plan.entries) {
+                        const previous = terms.find(term => term.name.trim() === item.name);
+                        if (!previous) { terms.push(structuredClone(item)); continue; }
+                        const choice = plan.decisions.get(item.name).value;
+                        if (choice === "keep") continue;
+                        previous.data = choice === "replace" ? structuredClone(item.data) : mergeTermData(previous.data, item.data);
+                    }
+                    termBatch = null;
+                    touch();
+                    render();
+                    status("术语已加入草稿，点击「保存配置」后生效");
+                });
+                preview.append(apply);
+                messageText(`共 ${entries.length} 条术语，新增 ${entries.length - conflicts.length} 条，同名 ${conflicts.length} 条`);
+            } catch (failure) { messageText(failure.message, true); }
+        });
+        panel.append(gridHost, check, message, preview);
+        container.append(panel);
+        termBatch = {container, grid};
+        return container;
+    }
+    function mergeTermData(previous, incoming) {
+        const merged = structuredClone(previous);
+        for (const [key, value] of Object.entries(incoming)) {
+            const old = merged[key];
+            if (Array.isArray(value)) merged[key] = [...new Set([...(Array.isArray(old) ? old : old ? [old] : []), ...value])];
+            else merged[key] = old && old !== value ? [...new Set([...String(old).split("\n"), ...value.split("\n")])].join("\n") : value;
+        }
+        return merged;
+    }
     function renderLabels() {
         const labels = section("分类标签", "展开模块可编辑二级和三级标签。一级模块的阈值在「统计规则」中调整");
         labels.append(editableList(groups, "一级模块", () => ({name: "", data: {themes: []}, threshold: 0.3}),
@@ -224,6 +347,7 @@
                 return panel;
             })));
         const dictionary = section("术语", "填写报告使用的名称，以及翻译时需要识别的说法");
+        dictionary.append(renderTermBatch());
         dictionary.append(editableList(terms, "术语", () => ({name: "", data: {}}), term =>
             nested(term.name || "新术语", summary => {
                 const panel = grid();
@@ -231,10 +355,7 @@
                     term.name = value;
                     summary.textContent = value || "新术语";
                 }, {required: true}));
-                const options = new Set(["definition", ...Object.keys(term.data), ...({
-                    baloot: ["ar_variants", "translation_notes"],
-                    xinjiang: ["ug_official", "ug_colloquial"],
-                }[workspace.dataset.game] || [])]);
+                const options = new Set([...(projectTermFields[workspace.dataset.game] || ["definition"]), ...Object.keys(term.data)]);
                 for (const key of options) {
                     const empty = key.endsWith("variants") || key.endsWith("notes") ? [] : "";
                     panel.append(input(termFields[key] || key, term.data[key] || empty, value => {
@@ -275,7 +396,7 @@
     }
     async function loadVersion(version) {
         if (busy || !state || (dirty() && !window.confirm("载入历史版本会替换未保存的配置草稿。继续吗？"))) return;
-        busy = true;
+        setBusy(true);
         try {
             const result = await api(`${url}/versions/${encodeURIComponent(version)}`);
             if (!state) return;
@@ -286,7 +407,7 @@
             status("已载入历史版本，保存后生效");
         } catch (failure) {
             if (failure.locked) expired(); else status(failure.message, true);
-        } finally { busy = false; save.disabled = !changed; }
+        } finally { setBusy(false); save.disabled = !changed; }
     }
     function renderHistory() {
         const history = section("版本记录", "历史版本可载入为草稿，确认后再保存");
@@ -337,24 +458,24 @@
         if (busy) return;
         const input = $("#config-password");
         const button = event.submitter;
-        busy = true;
+        setBusy(true);
         if (button) button.disabled = true;
         status("正在验证项目密码");
         try {
             show(await post(url + "/unlock", {password: input.value}));
             status("");
         } catch (failure) { status(failure.message, true); }
-        finally { input.value = ""; if (button) button.disabled = false; busy = false; }
+        finally { input.value = ""; if (button) button.disabled = false; setBusy(false); }
     });
     $("#config-lock").addEventListener("click", async () => {
         if (busy || savingPrompt) return;
         if ((dirty() || Object.keys(promptDrafts).length) && !window.confirm("锁定会清除未保存的配置修改。继续吗？")) return;
-        busy = true;
+        setBusy(true);
         try {
             await post(url + "/lock", {});
             lockScreen(true);
         } catch (failure) { status(failure.message, true); }
-        finally { busy = false; }
+        finally { setBusy(false); }
     });
     $("#config-reload").addEventListener("click", () => {
         if (dirty() && !window.confirm("重新读取会清除未保存的配置修改。继续吗？")) return;
@@ -364,7 +485,8 @@
     form.addEventListener("submit", async event => {
         event.preventDefault();
         if (!changed || busy || !state) return;
-        busy = true;
+        if (pendingTerms()) { status("请先将批量术语加入草稿，或清空批量表格后再保存", true); return; }
+        setBusy(true);
         save.disabled = true;
         try {
             const result = await post(url, {revision: state.revision, value: valueForSave()});
@@ -372,7 +494,7 @@
             status("已保存，新任务将使用此版本");
         } catch (failure) {
             if (failure.locked) expired(); else status(failure.message, true);
-        } finally { busy = false; save.disabled = !changed; }
+        } finally { setBusy(false); save.disabled = !changed; }
     });
 
     window.projectConfig = {open: () => { if (!state) refresh(); }, dirty, expired, unlocked: () => Boolean(state)};

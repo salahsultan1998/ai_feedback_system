@@ -190,3 +190,34 @@ tbody tr:hover td { background: #fafafa; }
     .config-details > div { padding-inline: 8px; }
     .workspace-nav .account-controls span { display: none; }
 }
+
+/* The batch terminology grid keeps the same controls and palette as configuration. */
+.term-batch { margin: 0 0 16px; border: 1px solid var(--border); border-radius: 8px; }
+.term-batch > summary { padding: 12px 16px; font-size: 14px; cursor: pointer; }
+.term-batch > .config-list { min-width: 0; grid-template-columns: minmax(0, 1fr); padding: 0 16px 16px; }
+.term-batch > .config-list > * { min-width: 0; }
+.term-batch > .config-list > p { margin: 0 0 4px; }
+.term-batch .term-batch-message { margin: 0; }
+.term-batch-message:empty { display: none; }
+.term-batch-message.failed { color: #9f2525; }
+.term-conflict { padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
+.term-conflict h3 { margin: 0 0 12px; font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
+.term-conflict strong { font-size: 13px; font-weight: 500; }
+.term-conflict p { margin: 4px 0 12px; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.term-grid-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.term-grid-wrap { min-width: 0; max-height: 400px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+.term-grid { width: 100%; table-layout: auto; }
+.term-grid th, .term-grid td { padding: 8px; min-width: 176px; max-width: none; font-size: 13px; font-weight: 400; color: var(--text-primary); }
+.term-grid thead th { color: var(--text-secondary); background: var(--background); font-weight: 500; }
+.term-grid th:first-child, .term-grid td:first-child { min-width: 40px; width: 40px; text-align: right; color: var(--text-secondary); }
+.term-grid th:last-child, .term-grid td:last-child { min-width: 64px; width: 64px; }
+.term-grid tbody th { position: static; background: var(--surface); }
+.term-grid td { border-top: 1px solid var(--border); vertical-align: top; }
+.term-grid tbody th { border-top: 1px solid var(--border); }
+.term-grid textarea {
+    display: block; width: 100%; min-width: 160px; min-height: 48px; resize: vertical;
+    padding: 4px 8px; border: 1px solid transparent; border-radius: 4px;
+    background: var(--surface); color: var(--text-primary); font: inherit; line-height: 1.5;
+}
+.term-grid textarea:hover { border-color: var(--border); }
+.term-grid textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; }

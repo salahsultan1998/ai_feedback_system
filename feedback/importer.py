@@ -33,6 +33,9 @@ def read_feedback(path, config):
         raise ValueError("上传文件没有数据。")
     data.columns = data.columns.astype(str).str.strip()
     mapping = config["column_mapping"]
+    if (config.get("game") == "xinjiang" and mapping.get("反馈标签") == "标签"
+            and "标签" not in data and "反馈标签" in data):
+        data = data.rename(columns={"反馈标签": "标签"})
     data = data.rename(columns={source: standard for standard, source in mapping.items()})
     if data.columns.duplicated().any():
         raise ValueError("存在重复列名，请检查列映射。")

@@ -11,6 +11,7 @@ import pandas as pd
 from openpyxl import load_workbook
 
 from app import create_app
+from feedback.cleaning import clean_feedback
 from feedback.config import load_config
 from feedback.feishu_sheets import detail_rows
 from feedback.importer import read_feedback
@@ -85,6 +86,32 @@ class XinjiangTests(unittest.TestCase):
         self.assertIn('充值金额', headers)
         self.assertNotIn('VIP等级', headers)
         self.assertEqual(book.worksheets[0].cell(5, headers.index('充值金额')+1).value, '196.98')
+
+    def test_backend_tags_are_filtered_before_ai_and_legacy_header_is_supported(self):
+        labels = ['重复反馈', '无效反馈', '抱怨捕鱼, 重复反馈', '抱怨捕鱼， 无效反馈',
+                  '抱怨捕鱼', '反馈不清楚', '反馈里骂人', '']
+        for header in ('标签', '反馈标签'):
+            with self.subTest(header=header):
+                source = self.source()
+                source[header] = labels
+                path = self.root / 'tagged.csv'
+                source.to_csv(path, index=False)
+                raw = read_feedback(path, self.config)
+                self.assertEqual(raw['反馈标签'].tolist(), labels)
+                cleaned, excluded = clean_feedback(raw, self.config)
+                self.assertEqual(cleaned['反馈ID'].tolist(), ['004', '005', '006', '007'])
+                self.assertEqual(excluded['排除原因'].tolist(), ['源标签排除'] * 4)
+                atomic_csv(self.root / 'rows.csv', raw)
+                with patch('feedback.ai_client.request_json', side_effect=ai_model) as model:
+                    result = run_report(self.root, self.config, '2026-10-19', '2026-10-22',
+                                        False, header, lambda **kw: None)
+                submitted = {item['feedback_id'] for call in model.call_args_list
+                             for item in call.args[1].get('feedbacks', [])}
+                self.assertEqual(submitted, {'004', '005'})
+                self.assertEqual((result['total'], result['previous_total']), (2, 0))
+                saved = read_csv(self.root / 'processed.csv').set_index('反馈ID')
+                self.assertTrue(saved['最终标签'].eq('玩法相关').all())
+                (self.root / 'processed.csv').unlink()
 
     def test_ai_flags_are_strict_and_invalid_feedback_cannot_be_candidates(self):
         answer = dict(translation_zh='原文无法理解', label='', theme='', subtheme='',
