@@ -29,10 +29,6 @@
   "bug_labels": [
     "BUG"
   ],
-  "concurrency": 4,
-  "classification_batch_size": 10,
-  "classification_batch_max_chars": 16000,
-  "timeout_seconds": 120,
   "feishu": {
     "enabled": true,
     "webhook_env": "FEISHU_XINJIANG_WEBHOOK",
