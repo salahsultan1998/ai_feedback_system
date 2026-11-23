@@ -1,5 +1,4 @@
 {
-  "candidate_source": "ai",
   "column_mapping": {
     "反馈ID": "反馈ID",
     "用户ID": "UID",
@@ -24,10 +23,10 @@
   },
   "ignored_labels": ["重复反馈", "无效反馈"],
   "suggestion_labels": [
-    "建议"
+    "提出建议"
   ],
   "bug_labels": [
-    "BUG"
+    "游戏出现BUG"
   ],
   "feishu": {
     "enabled": true,

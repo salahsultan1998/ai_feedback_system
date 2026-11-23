@@ -1,4 +1,4 @@
-"""Xinjiang AI candidates must survive the complete existing report workflow."""
+"""Xinjiang source-label candidates survive the report workflow."""
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -48,7 +48,8 @@ class XinjiangTests(unittest.TestCase):
 
     def source(self):
         return pd.DataFrame([{'反馈ID': f'00{i}', 'UID': '0009', '反馈内容': 'شەرەپ تاختىسى ئېچىلمايدۇ',
-            '反馈日期': day, '充值金额': '196.98', '设备信息': 'device_name:test'} for i, day in
+            '反馈日期': day, '充值金额': '196.98', '设备信息': 'device_name:test',
+            '标签': {4: '提出建议', 5: '游戏出现BUG'}.get(i, '')} for i, day in
             enumerate(['2026-10-01', '2026-10-12', '2026-10-15', '2026-10-16',
                        '2026-10-19', '2026-10-22', '2026-10-23', '2026-10-31'])])
 
@@ -56,7 +57,7 @@ class XinjiangTests(unittest.TestCase):
         source = self.root / 'source.xlsx'
         self.source().to_excel(source, index=False)
         raw = read_feedback(source, self.config)
-        self.assertTrue(raw['反馈标签'].eq('').all())
+        self.assertEqual(raw.loc[4, '反馈标签'], '提出建议')
         self.assertEqual(raw.iloc[0]['用户ID'], '0009')
         atomic_csv(self.root / 'rows.csv', raw)
         with patch('feedback.ai_client.request_json', side_effect=ai_model) as model:
@@ -70,13 +71,12 @@ class XinjiangTests(unittest.TestCase):
         saved = read_csv(self.root / 'processed.csv').set_index('反馈ID')
         self.assertEqual(saved.loc['004', '是否建议'], '是')
         self.assertEqual(saved.loc['005', '是否建议'], '否')
-        self.assertEqual(saved.loc['005', '是否疑似BUG'], '是')
         folder = self.root / 'reports/first'
         review = json.loads((folder / 'review.json').read_text())
         self.assertEqual(review['suggestions'][0]['feedback_ids'], ['004'])
         text = (folder / 'report.md').read_text()
         self.assertIn('重试按钮', text)
-        self.assertIn('004、005', text)
+        self.assertIn('005', text)
         online_rows = detail_rows(folder)
         self.assertIn('充值金额', online_rows[0])
         self.assertEqual(len(online_rows), 5)
@@ -92,7 +92,7 @@ class XinjiangTests(unittest.TestCase):
                   '抱怨捕鱼', '反馈不清楚', '反馈里骂人', '']
         for header in ('标签', '反馈标签'):
             with self.subTest(header=header):
-                source = self.source()
+                source = self.source().drop(columns=['标签'])
                 source[header] = labels
                 path = self.root / 'tagged.csv'
                 source.to_csv(path, index=False)
@@ -113,25 +113,12 @@ class XinjiangTests(unittest.TestCase):
                 self.assertTrue(saved['最终标签'].eq('玩法相关').all())
                 (self.root / 'processed.csv').unlink()
 
-    def test_ai_flags_are_strict_and_invalid_feedback_cannot_be_candidates(self):
-        answer = dict(translation_zh='原文无法理解', label='', theme='', subtheme='',
-                      is_valid=False, exclusion_reason='内容无法理解', is_suggestion=True, is_bug=True)
-        checked = validate_result(answer, self.config)
-        self.assertFalse(checked['is_suggestion'])
-        self.assertFalse(checked['is_bug'])
-        for field in ('is_suggestion', 'is_bug'):
-            for value in ('true', None, 1):
-                with self.subTest(field=field, value=value), self.assertRaises(ValueError):
-                    validate_result({**answer, field: value}, self.config)
-        row = {'反馈ID':'001', '用户自己填写的内容':'测试', '反馈标签':''}
-        source_config = {**self.config, 'candidate_source': 'source_label'}
-        self.assertNotEqual(fingerprint(row, self.config), fingerprint(row, source_config))
-        self.assertIn('is_bug', batch_instructions(self.config))
-        baloot = load_config('baloot')
-        answer.update(is_valid=True, exclusion_reason='', label='其他', theme='', subtheme='')
-        self.assertFalse(validate_result(answer, baloot)['is_suggestion'])
-        self.assertTrue(validate_result(answer, baloot, '建议')['is_suggestion'])
-        self.assertNotIn('is_bug', validate_result(answer, baloot))
+    def test_candidates_use_exact_original_labels(self):
+        from feedback.policies import suggestion_mask, bug_mask
+        rows = pd.DataFrame({'反馈标签': ['提出建议', ' 游戏出现BUG ', '建议', 'BUG', '']})
+        self.assertEqual(suggestion_mask(rows, self.config).tolist(), [True, False, False, False, False])
+        self.assertEqual(bug_mask(rows, self.config).tolist(), [False, True, False, False, False])
+        self.assertNotIn('is_bug', batch_instructions(self.config))
 
     def test_game_page_upload_and_feishu_spreadsheet_enabled(self):
         app = create_app({'TESTING': True, 'STORAGE_ROOT': self.root / 'web'})
