@@ -6,7 +6,7 @@
   "max_report_days": 31,
   "csv_encoding": "utf-8-sig",
   "concurrency":200,
-  "classification_batch_size":30,
+  "classification_batch_size":50,
   "classification_batch_max_chars":26000,
   "max_retries": 3,
   "retry_delay": 2,
