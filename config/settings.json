@@ -11,5 +11,5 @@
   "max_retries": 3,
   "retry_delay": 2,
   "timeout_seconds": 60,
-  "model": "openai/gpt-4o-mini"
+  "model": "openai/gpt-6-luna-pro"
 }
